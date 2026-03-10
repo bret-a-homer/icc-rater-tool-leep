@@ -197,6 +197,128 @@ function MisclassificationPanel({ icc }) {
   );
 }
 
+// ── Per-Rater Breakdown ───────────────────────────────────────────────────────
+function PerRaterBreakdown({ matrix, headers, icc }) {
+  if (!matrix || matrix.length < 2 || matrix[0].length < 2) return null;
+
+  const k = matrix[0].length;
+  const scaleVariance = (3 * 3) / 12; // uniform [1,4]
+  const errorSD = Math.sqrt((1 - Math.max(0, Math.min(0.9999, icc))) * scaleVariance);
+
+  // Estimate true score per case as mean across all raters
+  const rowMeans = matrix.map(row => row.reduce((a, b) => a + b, 0) / row.length);
+
+  const raters = Array.from({ length: k }, (_, j) => {
+    const name = headers?.[j] || `Rater ${j + 1}`;
+    let falseRej3 = 0; // true mean in [3, 3.5) and rater gave < 3
+    let falseRej4 = 0; // true mean >= 3.5 and rater gave < 3
+    let falsePass = 0; // true mean < 3 and rater gave >= 3
+
+    matrix.forEach((row, i) => {
+      const trueMean = rowMeans[i];
+      const score = row[j];
+      if (trueMean >= 3.5 && score < 3) falseRej4++;
+      else if (trueMean >= 3 && score < 3) falseRej3++;
+      else if (trueMean < 3 && score >= 3) falsePass++;
+    });
+
+    // Also compute expected rates from ICC model
+    const pFR3 = normalCDF((2.5 - 3) / errorSD);
+    const pFR4 = normalCDF((2.5 - 4) / errorSD);
+    const pFP  = 1 - normalCDF((2.5 - 2) / errorSD);
+
+    return { name, falseRej3, falseRej4, falsePass, pFR3, pFR4, pFP };
+  });
+
+  const totalCases = matrix.length;
+  const maxVal = Math.max(1, ...raters.flatMap(r => [r.falseRej3, r.falseRej4, r.falsePass]));
+
+  const pill = (count, color) => (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+      <div style={{
+        height: "8px", borderRadius: "4px", background: "#2a2d3e",
+        flex: 1, overflow: "hidden",
+      }}>
+        <div style={{
+          height: "100%", borderRadius: "4px", background: color,
+          width: `${(count / maxVal) * 100}%`, transition: "width 0.4s",
+        }} />
+      </div>
+      <div style={{
+        fontSize: "0.8rem", fontWeight: 700, fontFamily: "'DM Mono', monospace",
+        color, minWidth: "1.5rem", textAlign: "right",
+      }}>{count}</div>
+    </div>
+  );
+
+  return (
+    <div style={{
+      background: "#141720", borderRadius: "14px",
+      padding: "1.25rem 1.5rem", border: "1px solid #2a2d3e", marginTop: "1rem",
+    }}>
+      <div style={{
+        fontSize: "0.75rem", fontWeight: 700, color: "#888",
+        textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.15rem",
+      }}>
+        Per-Rater Classification Errors
+      </div>
+      <div style={{ fontSize: "0.7rem", color: "#555", marginBottom: "1rem" }}>
+        Based on actual submitted scores vs. estimated true score (case mean across all raters).
+        n = {totalCases} cases.
+      </div>
+
+      {/* Legend */}
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "0.85rem", flexWrap: "wrap" }}>
+        {[
+          { label: "False rejection (true ≈ 3, rated < 3)", color: "#f39c12" },
+          { label: "False rejection (true ≥ 3.5, rated < 3)", color: "#e74c3c" },
+          { label: "False pass (true < 3, rated ≥ 3)", color: "#8e44ad" },
+        ].map(({ label, color }) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
+            <div style={{ width: "10px", height: "10px", borderRadius: "2px", background: color, flexShrink: 0 }} />
+            <span style={{ fontSize: "0.65rem", color: "#666" }}>{label}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Rater rows */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+        {raters.map(({ name, falseRej3, falseRej4, falsePass }) => (
+          <div key={name} style={{
+            background: "#1a1d27", borderRadius: "10px",
+            padding: "0.85rem 1rem", border: "1px solid #2a2d3e",
+          }}>
+            <div style={{
+              fontSize: "0.75rem", fontWeight: 700, color: "#ccc",
+              marginBottom: "0.6rem", fontFamily: "'DM Sans', sans-serif",
+            }}>{name}</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+              <div style={{ fontSize: "0.65rem", color: "#666", marginBottom: "0.1rem" }}>
+                False rejections — true ≈ 3 (borderline)
+              </div>
+              {pill(falseRej3, "#f39c12")}
+              <div style={{ fontSize: "0.65rem", color: "#666", marginTop: "0.2rem", marginBottom: "0.1rem" }}>
+                False rejections — true ≥ 3.5 (clearly qualified)
+              </div>
+              {pill(falseRej4, "#e74c3c")}
+              <div style={{ fontSize: "0.65rem", color: "#666", marginTop: "0.2rem", marginBottom: "0.1rem" }}>
+                False passes — true &lt; 3 (rated ≥ 3)
+              </div>
+              {pill(falsePass, "#8e44ad")}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: "0.85rem", fontSize: "0.65rem", color: "#444", lineHeight: 1.7 }}>
+        True score is estimated as the average rating across all raters for each case.
+        A false rejection occurs when the rater's score is below 3 for a case where the mean is ≥ 3.
+        A false pass occurs when the rater's score is ≥ 3 for a case where the mean is &lt; 3.
+      </div>
+    </div>
+  );
+}
+
 // ── Chat Widget ──────────────────────────────────────────────────────────────
 function ChatWidget({ iccContext }) {
   const [open, setOpen] = useState(false);
@@ -1531,6 +1653,7 @@ Cover: what the ICC score means in plain language, what the practical implicatio
               </div>
 
               <MisclassificationPanel icc={result.icc} />
+              <PerRaterBreakdown matrix={matrix} headers={headers} icc={result.icc} />
             </>
           )}
 
