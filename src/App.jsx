@@ -186,9 +186,12 @@ function MisclassificationPanel({ icc }) {
         ))}
       </div>
 
-      <div style={{ marginTop: "0.85rem", fontSize: "0.7rem", color: "#444", lineHeight: 1.5 }}>
-        Assumes 1,000 total applicants with uniformly distributed true scores (250 each at 1–4).
-        Pass threshold: score ≥ 3. Rejection: rated &lt; 3. Error model: single-rater observation from ICC-implied measurement noise.
+      <div style={{ marginTop: "0.85rem", fontSize: "0.7rem", color: "#555", lineHeight: 1.8 }}>
+        <div style={{ fontWeight: 700, color: "#666", marginBottom: "0.3rem", textTransform: "uppercase",
+                      letterSpacing: "0.06em", fontSize: "0.65rem" }}>Assumptions</div>
+        <div>1. Each case is rated by 1 rater</div>
+        <div>2. Cases rated 3 or higher are passing</div>
+        <div>3. Cases rated below 3 are rejected</div>
       </div>
     </div>
   );
