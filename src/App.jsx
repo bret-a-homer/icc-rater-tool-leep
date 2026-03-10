@@ -118,7 +118,8 @@ function MisclassificationPanel({ icc }) {
   const scaleVariance = (3 * 3) / 12; // uniform on [1,4]
   const errorSD = Math.sqrt((1 - Math.max(0, Math.min(0.9999, icc))) * scaleVariance);
 
-  // P(single rater scores ≤ 2 | true score = x) = Φ((2.5 - x) / errorSD)
+  // False rejection = true score ≥ 3 but rated < 3 (i.e. rated 1 or 2)
+  // P(rated < 3 | true = x) = Φ((2.5 - x) / errorSD)
   const p3 = normalCDF((2.5 - 3) / errorSD);
   const p4 = normalCDF((2.5 - 4) / errorSD);
 
@@ -136,7 +137,7 @@ function MisclassificationPanel({ icc }) {
       borderRadius: "14px",
       padding: "1.25rem 1.5rem",
       border: "1px solid #2a2d3e",
-      marginBottom: "1rem",
+      marginTop: "1rem",
     }}>
       <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#888",
                     textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.85rem" }}>
@@ -150,8 +151,8 @@ function MisclassificationPanel({ icc }) {
           {totalFalse}
         </div>
         <div style={{ fontSize: "0.85rem", color: "#888", paddingBottom: "0.4rem", lineHeight: 1.4 }}>
-          truly-qualified applicants<br />
-          <strong style={{ color: "#ccc" }}>incorrectly rejected</strong>
+          truly-qualified applicants (true score ≥ 3)<br />
+          <strong style={{ color: "#ccc" }}>incorrectly rejected (rated &lt; 3)</strong>
         </div>
       </div>
 
@@ -162,15 +163,15 @@ function MisclassificationPanel({ icc }) {
                       borderRadius: "4px", transition: "width 0.4s" }} />
       </div>
       <div style={{ fontSize: "0.72rem", color: "#555", marginBottom: "1rem" }}>
-        {pct}% of the 500 truly-qualified applicants (true score 3 or 4) are mislabeled as failing
+        {pct}% of the 500 truly-qualified applicants (true score ≥ 3) are rated &lt; 3 and rejected
       </div>
 
       {/* Breakdown table */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
         {[
-          { label: "True score 3 → rated ≤ 2", count: falseFrom3, pct: (p3 * 100).toFixed(1),
+          { label: "True score 3, rated < 3", count: falseFrom3, pct: (p3 * 100).toFixed(1),
             note: "Borderline-pass rated as fail" },
-          { label: "True score 4 → rated ≤ 2", count: falseFrom4, pct: (p4 * 100).toFixed(1),
+          { label: "True score 4, rated < 3", count: falseFrom4, pct: (p4 * 100).toFixed(1),
             note: "Clear-pass rated as fail" },
         ].map(({ label, count, pct: p, note }) => (
           <div key={label} style={{ background: "#1a1d27", borderRadius: "8px",
@@ -187,7 +188,7 @@ function MisclassificationPanel({ icc }) {
 
       <div style={{ marginTop: "0.85rem", fontSize: "0.7rem", color: "#444", lineHeight: 1.5 }}>
         Assumes 1,000 total applicants with uniformly distributed true scores (250 each at 1–4).
-        Scores ≤ 2 are rejected. Error model: single-rater observation from ICC-implied measurement noise.
+        Pass threshold: score ≥ 3. Rejection: rated &lt; 3. Error model: single-rater observation from ICC-implied measurement noise.
       </div>
     </div>
   );
@@ -1340,8 +1341,6 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                 scaleMax={4}
               />
 
-              <MisclassificationPanel icc={result.icc} />
-
               <div style={{
                 background: "#141720",
                 borderRadius: "10px",
@@ -1404,6 +1403,8 @@ Cover: what the ICC score means in plain language, what the practical implicatio
               <div style={{ fontSize: "0.7rem", color: "#444", textAlign: "center", marginTop: "0.4rem" }}>
                 Downloads a Word doc — open directly or import into Google Docs via File → Import
               </div>
+
+              <MisclassificationPanel icc={result.icc} />
             </>
           )}
 
