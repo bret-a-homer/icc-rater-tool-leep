@@ -727,20 +727,20 @@ function NoiseVisualization({ icc, scaleMin = 1, scaleMax = 4 }) {
 
   // Reference ICC values = midpoint of each category
   const comparisons = [
-    { key: "excellent",   label: "Excellent",   icc: 0.925, color: "#27ae60", dash: "6,3" },
-    { key: "good",        label: "Good",        icc: 0.825, color: "#2ecc71", dash: "4,4" },
+    { key: "excellent",   label: "Excellent",   icc: 0.925, color: "#1e90ff", dash: "6,3" },
+    { key: "good",        label: "Good",        icc: 0.825, color: "#27ae60", dash: "4,4" },
     { key: "moderate",    label: "Moderate",    icc: 0.675, color: "#f1c40f", dash: "4,4" },
-    { key: "borderline",  label: "Borderline",  icc: 0.550, color: "#f39c12", dash: "2,3" },
+    { key: "borderline",  label: "Borderline",  icc: 0.550, color: "#e74c3c", dash: "2,3" },
   ];
 
   const getActualColor = (v) => {
-    if (v < 0) return "#8e44ad";
-    if (v < 0.50) return "#e74c3c";
-    if (v < 0.60) return "#f39c12";
+    if (v < 0) return "#95a5a6";
+    if (v < 0.50) return "#95a5a6";
+    if (v < 0.60) return "#e74c3c";
     if (v < 0.75) return "#f1c40f";
-    if (v < 0.90) return "#2ecc71";
-    if (v < 0.975) return "#27ae60";
-    return "#7f8c8d";
+    if (v < 0.90) return "#27ae60";
+    if (v < 0.975) return "#1e90ff";
+    return "#95a5a6";
   };
   const actualColor = getActualColor(icc);
 
@@ -1732,13 +1732,12 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                   Interpretation Guide
                 </div>
                 {[
-                  ["< 0.00", "Negative", "#8e44ad", "Raters agree less than chance. Serious rubric or training problem."],
-                  ["0.00 – 0.50", "Poor", "#e74c3c", "Rater agreement is insufficient. Consider rater training or rubric revision."],
-                  ["0.50 – 0.60", "Borderline", "#f39c12", "Marginal agreement. Proceed with caution; review outlier raters."],
-                  ["0.60 – 0.75", "Moderate", "#f1c40f", "Acceptable for exploratory use. Not recommended for high-stakes decisions alone."],
-                  ["0.75 – 0.90", "Good", "#2ecc71", "Good reliability. Suitable for most selection contexts."],
-                  ["0.90 – 0.975", "Excellent", "#27ae60", "Excellent agreement. Strong confidence in rater consistency."],
-                  ["> 0.975", "Suspiciously Ideal", "#7f8c8d", "Unusually high. Check for rater collusion or data entry issues."],
+                  ["> 0.975",      "Suspiciously Ideal", "#95a5a6", "Unusually high. Check for rater collusion or data entry issues."],
+                  ["0.90 – 0.975", "Excellent",          "#1e90ff", "Excellent agreement. Strong confidence in rater consistency."],
+                  ["0.75 – 0.90",  "Good",               "#27ae60", "Good reliability. Suitable for most selection contexts."],
+                  ["0.60 – 0.75",  "Moderate",           "#f1c40f", "Acceptable for exploratory use. Not recommended for high-stakes decisions alone."],
+                  ["0.50 – 0.60",  "Borderline",         "#e74c3c", "Marginal agreement. Proceed with caution; review outlier raters."],
+                  ["0.00 – 0.50",  "Poor",               "#95a5a6", "Rater agreement is insufficient. Consider rater training or rubric revision."],
                 ].map(([range, label, color, desc]) => (
                   <div key={range} style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start",
                                             marginBottom: "0.5rem", fontSize: "0.78rem" }}>
