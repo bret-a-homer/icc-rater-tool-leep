@@ -36,7 +36,7 @@ export default async function handler(req, res) {
 
   try {
     const response = await client.messages.create({
-      model: "claude-haiku-4-5",
+      model: "claude-haiku-4-5-20251001",
       max_tokens: 600,
       system: buildSystemPrompt(iccContext),
       messages,
@@ -45,6 +45,12 @@ export default async function handler(req, res) {
     res.json({ reply: response.content[0].text });
   } catch (e) {
     console.error("Claude API error:", e);
-    res.status(500).json({ error: "Failed to get a response. Please try again." });
+    const status = e?.status ?? 500;
+    const msg =
+      status === 401 ? "API key missing or invalid. Please check Vercel environment variables." :
+      status === 429 ? "Rate limit reached. Please try again in a moment." :
+      status === 400 ? `Bad request: ${e?.message ?? "unknown"}` :
+      "Failed to get a response. Please try again.";
+    res.status(status < 500 ? status : 500).json({ error: msg });
   }
 }
