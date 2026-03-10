@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 
-const client = new Anthropic(); // reads ANTHROPIC_API_KEY from env
+const client = new Anthropic({ apiKey: process.env.claudeAPIforICCtool });
 
 function buildSystemPrompt(ctx) {
   let prompt = `You are a helpful assistant embedded in the LEEP ICC Rater Agreement Calculator. You help users understand inter-rater reliability (ICC) analysis. Answer clearly for a non-technical audience such as HR professionals or hiring managers. Be concise — 2–4 sentences unless a longer answer is clearly needed. Do not use jargon.`;
