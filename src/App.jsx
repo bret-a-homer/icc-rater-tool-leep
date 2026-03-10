@@ -198,56 +198,108 @@ function MisclassificationPanel({ icc }) {
 }
 
 // ── Per-Rater Breakdown ───────────────────────────────────────────────────────
-function PerRaterBreakdown({ matrix, headers, icc }) {
+function PerRaterBreakdown({ matrix, headers }) {
   if (!matrix || matrix.length < 2 || matrix[0].length < 2) return null;
 
   const k = matrix[0].length;
-  const scaleVariance = (3 * 3) / 12; // uniform [1,4]
-  const errorSD = Math.sqrt((1 - Math.max(0, Math.min(0.9999, icc))) * scaleVariance);
+  const n = matrix.length;
 
-  // Estimate true score per case as mean across all raters
+  // Estimated true score per case = mean across all raters
   const rowMeans = matrix.map(row => row.reduce((a, b) => a + b, 0) / row.length);
+
+  // "True" pass/fail: mean >= 3 → pass, < 3 → fail
+  const truePass = i => rowMeans[i] >= 3;
 
   const raters = Array.from({ length: k }, (_, j) => {
     const name = headers?.[j] || `Rater ${j + 1}`;
-    let falseRej3 = 0; // true mean in [3, 3.5) and rater gave < 3
-    let falseRej4 = 0; // true mean >= 3.5 and rater gave < 3
-    let falsePass = 0; // true mean < 3 and rater gave >= 3
+
+    // Confusion matrix counts (threshold = 3)
+    let tp = 0, fp = 0, tn = 0, fn = 0;
+    // Distribution counts for scores 1–4
+    const raterDist  = [0, 0, 0, 0]; // index = score-1
+    const trueDist   = [0, 0, 0, 0]; // rounded mean
 
     matrix.forEach((row, i) => {
-      const trueMean = rowMeans[i];
       const score = row[j];
-      if (trueMean >= 3.5 && score < 3) falseRej4++;
-      else if (trueMean >= 3 && score < 3) falseRej3++;
-      else if (trueMean < 3 && score >= 3) falsePass++;
+      const raterPass = score >= 3;
+      const tp_ = truePass(i);
+      if (tp_ && raterPass)  tp++;
+      if (!tp_ && raterPass) fp++;
+      if (!tp_ && !raterPass) tn++;
+      if (tp_ && !raterPass) fn++;
+
+      raterDist[Math.round(score) - 1] = (raterDist[Math.round(score) - 1] || 0) + 1;
+      const roundedMean = Math.min(4, Math.max(1, Math.round(rowMeans[i])));
+      trueDist[roundedMean - 1]++;
     });
 
-    // Also compute expected rates from ICC model
-    const pFR3 = normalCDF((2.5 - 3) / errorSD);
-    const pFR4 = normalCDF((2.5 - 4) / errorSD);
-    const pFP  = 1 - normalCDF((2.5 - 2) / errorSD);
+    const precision = tp + fp > 0 ? tp / (tp + fp) : null;
+    const recall    = tp + fn > 0 ? tp / (tp + fn) : null;
 
-    return { name, falseRej3, falseRej4, falsePass, pFR3, pFR4, pFP };
+    return { name, tp, fp, tn, fn, precision, recall, raterDist, trueDist };
   });
 
-  const totalCases = matrix.length;
-  const maxVal = Math.max(1, ...raters.flatMap(r => [r.falseRej3, r.falseRej4, r.falsePass]));
-
-  const pill = (count, color) => (
-    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-      <div style={{
-        height: "8px", borderRadius: "4px", background: "#2a2d3e",
-        flex: 1, overflow: "hidden",
-      }}>
-        <div style={{
-          height: "100%", borderRadius: "4px", background: color,
-          width: `${(count / maxVal) * 100}%`, transition: "width 0.4s",
-        }} />
+  // Mini bar chart for distributions
+  const DistChart = ({ raterDist, trueDist }) => {
+    const maxCount = Math.max(1, ...raterDist, ...trueDist);
+    const scores = [1, 2, 3, 4];
+    return (
+      <div style={{ marginTop: "0.85rem" }}>
+        <div style={{ display: "flex", gap: "0.3rem", alignItems: "flex-end", height: "60px" }}>
+          {scores.map((s, i) => {
+            const rH = (raterDist[i] / maxCount) * 56;
+            const tH = (trueDist[i] / maxCount) * 56;
+            return (
+              <div key={s} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
+                <div style={{ width: "100%", display: "flex", alignItems: "flex-end", gap: "2px", height: "56px" }}>
+                  {/* True dist bar */}
+                  <div style={{
+                    flex: 1, height: `${tH}px`, borderRadius: "3px 3px 0 0",
+                    background: "#3a7bd5", opacity: 0.5,
+                  }} />
+                  {/* Rater dist bar */}
+                  <div style={{
+                    flex: 1, height: `${rH}px`, borderRadius: "3px 3px 0 0",
+                    background: "#e67e22",
+                  }} />
+                </div>
+                <div style={{
+                  fontSize: "0.6rem", color: s >= 3 ? "#27ae60" : "#e74c3c",
+                  fontWeight: 700, fontFamily: "'DM Mono', monospace",
+                  borderTop: `2px solid ${s >= 3 ? "#27ae60" : "#e74c3c"}`,
+                  width: "100%", textAlign: "center", paddingTop: "2px",
+                }}>{s}</div>
+              </div>
+            );
+          })}
+        </div>
+        {/* Legend */}
+        <div style={{ display: "flex", gap: "0.8rem", marginTop: "0.4rem" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: "#3a7bd5", opacity: 0.5 }} />
+            <span style={{ fontSize: "0.6rem", color: "#555" }}>True (mean)</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+            <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: "#e67e22" }} />
+            <span style={{ fontSize: "0.6rem", color: "#555" }}>This rater</span>
+          </div>
+        </div>
       </div>
-      <div style={{
-        fontSize: "0.8rem", fontWeight: 700, fontFamily: "'DM Mono', monospace",
-        color, minWidth: "1.5rem", textAlign: "right",
-      }}>{count}</div>
+    );
+  };
+
+  // Confusion matrix cell
+  const Cell = ({ count, label, sub, bg, textColor = "#fff" }) => (
+    <div style={{
+      background: bg, borderRadius: "6px", padding: "0.5rem 0.4rem",
+      textAlign: "center", display: "flex", flexDirection: "column",
+      alignItems: "center", justifyContent: "center", gap: "2px",
+    }}>
+      <div style={{ fontSize: "1.3rem", fontWeight: 700, fontFamily: "'DM Mono', monospace", color: textColor, lineHeight: 1 }}>
+        {count}
+      </div>
+      <div style={{ fontSize: "0.6rem", fontWeight: 700, color: textColor, opacity: 0.85 }}>{label}</div>
+      <div style={{ fontSize: "0.55rem", color: textColor, opacity: 0.55 }}>{sub}</div>
     </div>
   );
 
@@ -260,60 +312,83 @@ function PerRaterBreakdown({ matrix, headers, icc }) {
         fontSize: "0.75rem", fontWeight: 700, color: "#888",
         textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.15rem",
       }}>
-        Per-Rater Classification Errors
+        Per-Rater Analysis
       </div>
-      <div style={{ fontSize: "0.7rem", color: "#555", marginBottom: "1rem" }}>
-        Based on actual submitted scores vs. estimated true score (case mean across all raters).
-        n = {totalCases} cases.
-      </div>
-
-      {/* Legend */}
-      <div style={{ display: "flex", gap: "1rem", marginBottom: "0.85rem", flexWrap: "wrap" }}>
-        {[
-          { label: "False rejection (true ≈ 3, rated < 3)", color: "#f39c12" },
-          { label: "False rejection (true ≥ 3.5, rated < 3)", color: "#e74c3c" },
-          { label: "False pass (true < 3, rated ≥ 3)", color: "#8e44ad" },
-        ].map(({ label, color }) => (
-          <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.35rem" }}>
-            <div style={{ width: "10px", height: "10px", borderRadius: "2px", background: color, flexShrink: 0 }} />
-            <span style={{ fontSize: "0.65rem", color: "#666" }}>{label}</span>
-          </div>
-        ))}
+      <div style={{ fontSize: "0.7rem", color: "#555", marginBottom: "1.25rem" }}>
+        Pass/fail threshold: score ≥ 3. True label = case mean across all raters. n = {n} cases.
       </div>
 
-      {/* Rater rows */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
-        {raters.map(({ name, falseRej3, falseRej4, falsePass }) => (
+      <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
+        {raters.map(({ name, tp, fp, tn, fn, precision, recall, raterDist, trueDist }) => (
           <div key={name} style={{
             background: "#1a1d27", borderRadius: "10px",
-            padding: "0.85rem 1rem", border: "1px solid #2a2d3e",
+            padding: "1rem", border: "1px solid #2a2d3e",
           }}>
+            {/* Rater name */}
             <div style={{
-              fontSize: "0.75rem", fontWeight: 700, color: "#ccc",
-              marginBottom: "0.6rem", fontFamily: "'DM Sans', sans-serif",
+              fontSize: "0.8rem", fontWeight: 700, color: "#ddd",
+              marginBottom: "0.85rem", fontFamily: "'DM Sans', sans-serif",
             }}>{name}</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-              <div style={{ fontSize: "0.65rem", color: "#666", marginBottom: "0.1rem" }}>
-                False rejections — true ≈ 3 (borderline)
+
+            {/* Confusion matrix + dist chart side by side */}
+            <div style={{ display: "flex", gap: "1rem", alignItems: "flex-start", flexWrap: "wrap" }}>
+
+              {/* Confusion matrix */}
+              <div style={{ flex: "0 0 auto" }}>
+                {/* Column headers */}
+                <div style={{ display: "grid", gridTemplateColumns: "56px 1fr 1fr", gap: "4px", marginBottom: "4px" }}>
+                  <div />
+                  <div style={{ fontSize: "0.6rem", color: "#555", textAlign: "center" }}>Rater: Pass</div>
+                  <div style={{ fontSize: "0.6rem", color: "#555", textAlign: "center" }}>Rater: Fail</div>
+                </div>
+                {/* Row: True Pass */}
+                <div style={{ display: "grid", gridTemplateColumns: "56px 1fr 1fr", gap: "4px", marginBottom: "4px" }}>
+                  <div style={{ fontSize: "0.6rem", color: "#555", display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: "4px" }}>
+                    True: Pass
+                  </div>
+                  <Cell count={tp} label="TP" sub="Correct pass" bg="#1e3a2f" textColor="#2ecc71" />
+                  <Cell count={fn} label="FN" sub="False reject" bg="#3a1e1e" textColor="#e74c3c" />
+                </div>
+                {/* Row: True Fail */}
+                <div style={{ display: "grid", gridTemplateColumns: "56px 1fr 1fr", gap: "4px" }}>
+                  <div style={{ fontSize: "0.6rem", color: "#555", display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: "4px" }}>
+                    True: Fail
+                  </div>
+                  <Cell count={fp} label="FP" sub="False pass" bg="#3a2a1e" textColor="#f39c12" />
+                  <Cell count={tn} label="TN" sub="Correct fail" bg="#1e1e2a" textColor="#7f8c8d" />
+                </div>
+                {/* Precision / Recall */}
+                <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.6rem" }}>
+                  {[
+                    { label: "Precision", val: precision },
+                    { label: "Recall",    val: recall },
+                  ].map(({ label, val }) => (
+                    <div key={label} style={{ fontSize: "0.65rem", color: "#555" }}>
+                      {label}:{" "}
+                      <span style={{ color: "#aaa", fontFamily: "'DM Mono', monospace" }}>
+                        {val !== null ? (val * 100).toFixed(0) + "%" : "—"}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              {pill(falseRej3, "#f39c12")}
-              <div style={{ fontSize: "0.65rem", color: "#666", marginTop: "0.2rem", marginBottom: "0.1rem" }}>
-                False rejections — true ≥ 3.5 (clearly qualified)
+
+              {/* Distribution chart */}
+              <div style={{ flex: 1, minWidth: "100px" }}>
+                <div style={{ fontSize: "0.65rem", color: "#555", marginBottom: "0.25rem" }}>
+                  Score distribution
+                </div>
+                <DistChart raterDist={raterDist} trueDist={trueDist} />
               </div>
-              {pill(falseRej4, "#e74c3c")}
-              <div style={{ fontSize: "0.65rem", color: "#666", marginTop: "0.2rem", marginBottom: "0.1rem" }}>
-                False passes — true &lt; 3 (rated ≥ 3)
-              </div>
-              {pill(falsePass, "#8e44ad")}
             </div>
           </div>
         ))}
       </div>
 
-      <div style={{ marginTop: "0.85rem", fontSize: "0.65rem", color: "#444", lineHeight: 1.7 }}>
-        True score is estimated as the average rating across all raters for each case.
-        A false rejection occurs when the rater's score is below 3 for a case where the mean is ≥ 3.
-        A false pass occurs when the rater's score is ≥ 3 for a case where the mean is &lt; 3.
+      <div style={{ marginTop: "0.85rem", fontSize: "0.6rem", color: "#444", lineHeight: 1.7 }}>
+        True label is estimated as the rounded mean rating across all raters for each case.
+        TP = true positive (correctly passed), FN = false negative (falsely rejected),
+        FP = false positive (falsely passed), TN = true negative (correctly rejected).
       </div>
     </div>
   );
@@ -1653,7 +1728,7 @@ Cover: what the ICC score means in plain language, what the practical implicatio
               </div>
 
               <MisclassificationPanel icc={result.icc} />
-              <PerRaterBreakdown matrix={matrix} headers={headers} icc={result.icc} />
+              <PerRaterBreakdown matrix={matrix} headers={headers} />
             </>
           )}
 
