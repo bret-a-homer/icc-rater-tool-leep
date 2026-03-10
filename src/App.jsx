@@ -562,12 +562,12 @@ function ICCGauge({ icc, ciLow, ciHigh }) {
 
   // Positive zones in ICC space (0..1) with their share of the positive bar
   const posZones = [
-    { from: 0.000, to: 0.500, label: "Poor",               color: "#e74c3c" },
-    { from: 0.500, to: 0.600, label: "Borderline",         color: "#f39c12" },
+    { from: 0.000, to: 0.500, label: "Poor",               color: "#95a5a6" },
+    { from: 0.500, to: 0.600, label: "Borderline",         color: "#e74c3c" },
     { from: 0.600, to: 0.750, label: "Moderate",           color: "#f1c40f" },
-    { from: 0.750, to: 0.900, label: "Good",               color: "#2ecc71" },
-    { from: 0.900, to: 0.975, label: "Excellent",          color: "#27ae60" },
-    { from: 0.975, to: 1.000, label: "Suspiciously Ideal", color: "#7f8c8d" },
+    { from: 0.750, to: 0.900, label: "Good",               color: "#27ae60" },
+    { from: 0.900, to: 0.975, label: "Excellent",          color: "#1e90ff" },
+    { from: 0.975, to: 1.000, label: "Suspiciously Ideal", color: "#95a5a6" },
   ];
 
   // Map an ICC value to bar % position
@@ -583,7 +583,7 @@ function ICCGauge({ icc, ciLow, ciHigh }) {
   };
 
   const allZones = [
-    { from: -1, to: 0, label: "Neg.", color: "#8e44ad", widthPct: NEG_PCT },
+    { from: -1, to: 0, label: "Neg.", color: "#95a5a6", widthPct: NEG_PCT },
     ...posZones.map(z => ({
       ...z,
       widthPct: (z.to - z.from) * POS_PCT,
