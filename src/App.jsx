@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 
 // ── ICC calculation (pure JS, no external deps) ─────────────────────────────
 function calculateICC(matrix, type) {
@@ -193,6 +193,129 @@ function MisclassificationPanel({ icc }) {
         <div>2. Cases rated 3 or higher are passing</div>
         <div>3. Cases rated below 3 are rejected</div>
       </div>
+    </div>
+  );
+}
+
+// ── Chat Widget ──────────────────────────────────────────────────────────────
+function ChatWidget({ iccContext }) {
+  const [open, setOpen] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const endRef = useRef(null);
+
+  useEffect(() => {
+    if (endRef.current) endRef.current.scrollIntoView({ behavior: "smooth" });
+  }, [messages, loading]);
+
+  const send = async () => {
+    if (!input.trim() || loading) return;
+    const userMsg = { role: "user", content: input.trim() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: newMessages, iccContext }),
+      });
+      const data = await res.json();
+      setMessages(m => [...m, { role: "assistant", content: data.reply || data.error || "Something went wrong." }]);
+    } catch {
+      setMessages(m => [...m, { role: "assistant", content: "Couldn't connect. Please try again." }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ marginTop: "1.5rem", borderTop: "1px solid #2a2d3e", paddingTop: "1rem" }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        style={{
+          width: "100%", background: "none", border: "none", color: "#666",
+          cursor: "pointer", fontSize: "0.8rem", fontWeight: 600,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          fontFamily: "'DM Sans', sans-serif", padding: "0.25rem 0",
+        }}
+      >
+        <span>💬 Ask a question about this analysis</span>
+        <span style={{ fontSize: "0.65rem" }}>{open ? "▲" : "▼"}</span>
+      </button>
+
+      {open && (
+        <div style={{ marginTop: "0.75rem" }}>
+          {/* Chat history */}
+          <div style={{
+            maxHeight: "300px", overflowY: "auto",
+            background: "#0f1117", borderRadius: "10px",
+            padding: "0.75rem", marginBottom: "0.5rem",
+            border: "1px solid #2a2d3e",
+          }}>
+            {messages.length === 0 && (
+              <div style={{ color: "#444", fontSize: "0.75rem", textAlign: "center", padding: "1.5rem 0", lineHeight: 1.6 }}>
+                Ask anything about ICC, rater agreement,<br />or how to interpret your results.
+              </div>
+            )}
+            {messages.map((m, i) => (
+              <div key={i} style={{
+                marginBottom: "0.6rem", display: "flex",
+                justifyContent: m.role === "user" ? "flex-end" : "flex-start",
+              }}>
+                <div style={{
+                  background: m.role === "user" ? "rgba(245,166,35,0.1)" : "#1a1d27",
+                  border: `1px solid ${m.role === "user" ? "rgba(245,166,35,0.3)" : "#2a2d3e"}`,
+                  borderRadius: "8px", padding: "0.5rem 0.75rem",
+                  maxWidth: "88%", fontSize: "0.8rem",
+                  color: m.role === "user" ? "#f5a623" : "#ccc",
+                  lineHeight: 1.6, whiteSpace: "pre-wrap",
+                }}>
+                  {m.content}
+                </div>
+              </div>
+            ))}
+            {loading && (
+              <div style={{ color: "#555", fontSize: "0.75rem", padding: "0.25rem 0.5rem" }}>
+                Thinking…
+              </div>
+            )}
+            <div ref={endRef} />
+          </div>
+
+          {/* Input row */}
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <input
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && !e.shiftKey && send()}
+              placeholder="Ask a question…"
+              style={{
+                flex: 1, background: "#141720", border: "1px solid #2a2d3e",
+                borderRadius: "8px", color: "#ccc",
+                fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem",
+                padding: "0.5rem 0.75rem", outline: "none",
+              }}
+            />
+            <button
+              onClick={send}
+              disabled={loading || !input.trim()}
+              style={{
+                background: loading || !input.trim() ? "#2a2d3e" : "#f5a623",
+                color: loading || !input.trim() ? "#555" : "#0f1117",
+                border: "none", borderRadius: "8px",
+                padding: "0.5rem 1rem", cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "'DM Sans', sans-serif", fontSize: "0.8rem", fontWeight: 700,
+                transition: "all 0.15s",
+              }}
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1410,6 +1533,28 @@ Cover: what the ICC score means in plain language, what the practical implicatio
               <MisclassificationPanel icc={result.icc} />
             </>
           )}
+
+          {/* ── CHAT WIDGET (all steps) ── */}
+          <ChatWidget
+            iccContext={result ? {
+              icc: result.icc.toFixed(3),
+              ciLow: result.ciLow.toFixed(3),
+              ciHigh: result.ciHigh.toFixed(3),
+              n: result.n,
+              k: result.k,
+              label: (() => {
+                const v = result.icc;
+                if (v < 0) return "Negative";
+                if (v < 0.50) return "Poor";
+                if (v < 0.60) return "Borderline";
+                if (v < 0.75) return "Moderate";
+                if (v < 0.90) return "Good";
+                if (v < 0.975) return "Excellent";
+                return "Suspiciously Ideal";
+              })(),
+              agreementType,
+            } : null}
+          />
 
         </div>
       </div>
