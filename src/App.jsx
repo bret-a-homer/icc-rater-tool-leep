@@ -110,23 +110,27 @@ function generateSimulatedData(targetICC, n = 40, k = 3) {
 }
 
 // ── Misclassification Panel ───────────────────────────────────────────────────
-function MisclassificationPanel({ icc }) {
+function MisclassificationPanel({ icc, cutPoint = 3 }) {
   const TOTAL = 1000;
-  const trueThrees = TOTAL * 0.25; // assume uniform distribution of true scores
-  const trueFours  = TOTAL * 0.25;
+  // Uniform on [1,4]: count cases in each "true" band around cutPoint
+  // Band just above cut: [cutPoint, cutPoint+1); band well above: [cutPoint+1, 4]
+  const bandSize = 0.25; // each integer band = 25% of uniform [1,4]
+  const trueAtCut  = TOTAL * bandSize; // e.g. true score = cutPoint
+  const trueAbove  = TOTAL * bandSize; // e.g. true score = cutPoint + 1
 
   const scaleVariance = (3 * 3) / 12; // uniform on [1,4]
   const errorSD = Math.sqrt((1 - Math.max(0, Math.min(0.9999, icc))) * scaleVariance);
 
-  // False rejection = true score ≥ 3 but rated < 3 (i.e. rated 1 or 2)
-  // P(rated < 3 | true = x) = Φ((2.5 - x) / errorSD)
-  const p3 = normalCDF((2.5 - 3) / errorSD);
-  const p4 = normalCDF((2.5 - 4) / errorSD);
+  // Continuous threshold at (cutPoint - 0.5): P(rated < cutPoint | true = x)
+  const thresh = cutPoint - 0.5;
+  const pAtCut  = normalCDF((thresh - cutPoint) / errorSD);
+  const pAbove  = normalCDF((thresh - (cutPoint + 1)) / errorSD);
 
-  const falseFrom3 = Math.round(trueThrees * p3);
-  const falseFrom4 = Math.round(trueFours  * p4);
-  const totalFalse = falseFrom3 + falseFrom4;
-  const pct = ((totalFalse / (trueThrees + trueFours)) * 100).toFixed(1);
+  const falseFromCut  = Math.round(trueAtCut  * pAtCut);
+  const falseFromAbove = Math.round(trueAbove * pAbove);
+  const totalFalse = falseFromCut + falseFromAbove;
+  const qualifiedCount = trueAtCut + trueAbove;
+  const pct = ((totalFalse / qualifiedCount) * 100).toFixed(1);
 
   const barW = Math.min(100, parseFloat(pct));
   const barColor = parseFloat(pct) < 5 ? "#27ae60" : parseFloat(pct) < 15 ? "#f39c12" : "#e74c3c";
@@ -151,8 +155,8 @@ function MisclassificationPanel({ icc }) {
           {totalFalse}
         </div>
         <div style={{ fontSize: "0.85rem", color: "#888", paddingBottom: "0.4rem", lineHeight: 1.4 }}>
-          truly-qualified applicants (true score ≥ 3)<br />
-          <strong style={{ color: "#ccc" }}>incorrectly rejected (rated &lt; 3)</strong>
+          truly-qualified applicants (true score ≥ {cutPoint})<br />
+          <strong style={{ color: "#ccc" }}>incorrectly rejected (rated &lt; {cutPoint})</strong>
         </div>
       </div>
 
@@ -163,16 +167,14 @@ function MisclassificationPanel({ icc }) {
                       borderRadius: "4px", transition: "width 0.4s" }} />
       </div>
       <div style={{ fontSize: "0.72rem", color: "#555", marginBottom: "1rem" }}>
-        {pct}% of the 500 truly-qualified applicants (true score ≥ 3) are rated &lt; 3 and rejected
+        {pct}% of the {Math.round(qualifiedCount)} truly-qualified applicants (true score ≥ {cutPoint}) are rated &lt; {cutPoint} and rejected
       </div>
 
       {/* Breakdown table */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
         {[
-          { label: "True score 3, rated < 3", count: falseFrom3, pct: (p3 * 100).toFixed(1),
-            note: "Borderline-pass rated as fail" },
-          { label: "True score 4, rated < 3", count: falseFrom4, pct: (p4 * 100).toFixed(1),
-            note: "Clear-pass rated as fail" },
+          { label: `True score ${cutPoint}, rated < ${cutPoint}`, count: falseFromCut,  pct: (pAtCut  * 100).toFixed(1), note: "Borderline-pass rated as fail" },
+          { label: `True score ${cutPoint + 1}, rated < ${cutPoint}`, count: falseFromAbove, pct: (pAbove * 100).toFixed(1), note: "Clear-pass rated as fail" },
         ].map(({ label, count, pct: p, note }) => (
           <div key={label} style={{ background: "#1a1d27", borderRadius: "8px",
                                     padding: "0.75rem", border: "1px solid #2a2d3e" }}>
@@ -190,15 +192,15 @@ function MisclassificationPanel({ icc }) {
         <div style={{ fontWeight: 700, color: "#666", marginBottom: "0.3rem", textTransform: "uppercase",
                       letterSpacing: "0.06em", fontSize: "0.65rem" }}>Assumptions</div>
         <div>1. Each case is rated by 1 rater</div>
-        <div>2. Cases rated 3 or higher are passing</div>
-        <div>3. Cases rated below 3 are rejected</div>
+        <div>2. Cases rated {cutPoint} or higher are passing</div>
+        <div>3. Cases rated below {cutPoint} are rejected</div>
       </div>
     </div>
   );
 }
 
 // ── Per-Rater Breakdown ───────────────────────────────────────────────────────
-function PerRaterBreakdown({ matrix, headers }) {
+function PerRaterBreakdown({ matrix, headers, cutPoint = 3 }) {
   if (!matrix || matrix.length < 2 || matrix[0].length < 2) return null;
 
   const k = matrix[0].length;
@@ -207,13 +209,13 @@ function PerRaterBreakdown({ matrix, headers }) {
   // Estimated true score per case = mean across all raters
   const rowMeans = matrix.map(row => row.reduce((a, b) => a + b, 0) / row.length);
 
-  // "True" pass/fail: mean >= 3 → pass, < 3 → fail
-  const truePass = i => rowMeans[i] >= 3;
+  // "True" pass/fail: mean >= cutPoint → pass
+  const truePass = i => rowMeans[i] >= cutPoint;
 
   const raters = Array.from({ length: k }, (_, j) => {
     const name = headers?.[j] || `Rater ${j + 1}`;
 
-    // Confusion matrix counts (threshold = 3)
+    // Confusion matrix counts
     let tp = 0, fp = 0, tn = 0, fn = 0;
     // Distribution counts for scores 1–4
     const raterDist  = [0, 0, 0, 0]; // index = score-1
@@ -221,7 +223,7 @@ function PerRaterBreakdown({ matrix, headers }) {
 
     matrix.forEach((row, i) => {
       const score = row[j];
-      const raterPass = score >= 3;
+      const raterPass = score >= cutPoint;
       const tp_ = truePass(i);
       if (tp_ && raterPass)  tp++;
       if (!tp_ && raterPass) fp++;
@@ -240,7 +242,7 @@ function PerRaterBreakdown({ matrix, headers }) {
   });
 
   // Smooth overlapping curve chart for distributions
-  const DistCurve = ({ raterDist, trueDist }) => {
+  const DistCurve = ({ raterDist, trueDist, cut }) => {
     const W = 180, H = 80;
     const PAD = { l: 10, r: 10, t: 10, b: 20 };
     const cW = W - PAD.l - PAD.r;
@@ -276,7 +278,7 @@ function PerRaterBreakdown({ matrix, headers }) {
     const filledPath = props =>
       `${smoothPath(props)} L ${xOf(4)},${baseY} L ${xOf(1)},${baseY} Z`;
 
-    const threshX = xOf(2.5);
+    const threshX = xOf(cut - 0.5);
 
     return (
       <div>
@@ -297,7 +299,7 @@ function PerRaterBreakdown({ matrix, headers }) {
           {/* X-axis score labels */}
           {[1, 2, 3, 4].map(s => (
             <text key={s} x={xOf(s)} y={H - 5} textAnchor="middle"
-                  fontSize="7.5" fill={s >= 3 ? "#27ae60" : "#c0392b"}
+                  fontSize="7.5" fill={s >= cut ? "#27ae60" : "#c0392b"}
                   fontWeight="700" fontFamily="'DM Mono', monospace">{s}</text>
           ))}
         </svg>
@@ -346,7 +348,7 @@ function PerRaterBreakdown({ matrix, headers }) {
         Per-Rater Analysis
       </div>
       <div style={{ fontSize: "0.7rem", color: "#555", marginBottom: "1.25rem" }}>
-        Pass/fail threshold: score ≥ 3. True label = case mean across all raters. n = {n} cases.
+        Pass/fail threshold: score ≥ {cutPoint}. True label = case mean across all raters. n = {n} cases.
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
@@ -409,7 +411,7 @@ function PerRaterBreakdown({ matrix, headers }) {
                 <div style={{ fontSize: "0.65rem", color: "#555", marginBottom: "0.25rem" }}>
                   Score distribution
                 </div>
-                <DistCurve raterDist={raterDist} trueDist={trueDist} />
+                <DistCurve raterDist={raterDist} trueDist={trueDist} cut={cutPoint} />
               </div>
             </div>
           </div>
@@ -928,6 +930,7 @@ export default function App() {
   const [matrix, setMatrix] = useState(null);
   const [headers, setHeaders] = useState(null);
   const [agreementType, setAgreementType] = useState("absolute");
+  const [cutPoint, setCutPoint] = useState(3);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
@@ -980,6 +983,7 @@ export default function App() {
     setFileName(`${label} (simulated)`);
     setRawText("");
     setError("");
+    setCutPoint(3);
     setStep("options");
   };
 
@@ -1217,14 +1221,15 @@ export default function App() {
       const errorSD = Math.sqrt((1 - Math.max(0, Math.min(0.9999, result.icc))) * scaleVariance);
 
       // Misclassification stats (1,000 applicants, uniform true scores)
-      const p3 = normalCDF((2.5 - 3) / errorSD);
-      const p4 = normalCDF((2.5 - 4) / errorSD);
-      const falseFrom3 = Math.round(250 * p3);
-      const falseFrom4 = Math.round(250 * p4);
-      const totalFalse = falseFrom3 + falseFrom4;
+      const thresh = cutPoint - 0.5;
+      const pAtCut  = normalCDF((thresh - cutPoint) / errorSD);
+      const pAbove  = normalCDF((thresh - (cutPoint + 1)) / errorSD);
+      const falseFromCut  = Math.round(250 * pAtCut);
+      const falseFromAbove = Math.round(250 * pAbove);
+      const totalFalse = falseFromCut + falseFromAbove;
       const falsePct = ((totalFalse / 500) * 100).toFixed(1);
 
-      const prompt = `You are writing a brief section of a professional inter-rater reliability report. 
+      const prompt = `You are writing a brief section of a professional inter-rater reliability report.
 Write 2–3 concise paragraphs interpreting the following ICC results for a non-technical audience (e.g. a hiring manager).
 
 Data:
@@ -1234,11 +1239,11 @@ Data:
 - 95% Confidence Interval: [${result.ciLow.toFixed(3)}, ${result.ciHigh.toFixed(3)}]
 - Number of cases rated: ${result.n}
 - Number of raters: ${result.k}
-- Rating scale: 1–4
+- Rating scale: 1–4, passing cut point: ${cutPoint}
 - Estimated error SD: ±${errorSD.toFixed(2)} score points
-- Assuming 1,000 applicants with uniformly distributed true scores, scores ≤ 2 are rejected:
-  - Estimated false rejections (truly score 3, rated ≤ 2): ${falseFrom3} applicants
-  - Estimated false rejections (truly score 4, rated ≤ 2): ${falseFrom4} applicants
+- Assuming 1,000 applicants with uniformly distributed true scores, scores < ${cutPoint} are rejected:
+  - Estimated false rejections (truly score ${cutPoint}, rated < ${cutPoint}): ${falseFromCut} applicants
+  - Estimated false rejections (truly score ${cutPoint + 1}, rated < ${cutPoint}): ${falseFromAbove} applicants
   - Total incorrectly rejected: ${totalFalse} of 500 truly-qualified applicants (${falsePct}%)
 
 Cover: what the ICC score means in plain language, what the practical implication is for using these ratings to make decisions, including specific mention of the false rejection numbers, and one concrete recommendation. Be direct and specific. Do not use jargon. Do not use bullet points.`;
@@ -1648,6 +1653,32 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                 </div>
               </div>
 
+              <hr style={s.divider} />
+
+              <div style={s.label}>Passing score cut point</div>
+              <div style={{ fontSize: "0.72rem", color: "#555", marginBottom: "0.75rem" }}>
+                Cases scored at or above this value are considered passing. Used in false rejection and per-rater analysis.
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+                {[1, 1.5, 2, 2.5, 3, 3.5, 4].map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setCutPoint(v)}
+                    style={{
+                      flex: 1, padding: "0.5rem 0", borderRadius: "8px", cursor: "pointer",
+                      fontSize: "0.8rem", fontWeight: 700, fontFamily: "'DM Mono', monospace",
+                      border: cutPoint === v ? "2px solid #4f8ef7" : "1px solid #2a2d3e",
+                      background: cutPoint === v ? "rgba(79,142,247,0.15)" : "#1a1d27",
+                      color: cutPoint === v ? "#4f8ef7" : "#555",
+                      transition: "all 0.15s",
+                    }}
+                  >{v}</button>
+                ))}
+              </div>
+              <div style={{ fontSize: "0.68rem", color: "#444", marginTop: "0.5rem" }}>
+                Selected: score ≥ {cutPoint} = pass, score &lt; {cutPoint} = fail
+              </div>
+
               <button style={s.btnPrimary} onClick={handleCalculate}>
                 Calculate ICC →
               </button>
@@ -1758,8 +1789,8 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                 Downloads a Word doc — open directly or import into Google Docs via File → Import
               </div>
 
-              <MisclassificationPanel icc={result.icc} />
-              <PerRaterBreakdown matrix={matrix} headers={headers} />
+              <MisclassificationPanel icc={result.icc} cutPoint={cutPoint} />
+              <PerRaterBreakdown matrix={matrix} headers={headers} cutPoint={cutPoint} />
             </>
           )}
 
@@ -1782,6 +1813,7 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                 return "Suspiciously Ideal";
               })(),
               agreementType,
+              cutPoint,
             } : null}
           />
 

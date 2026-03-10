@@ -15,7 +15,7 @@ The user has just run an ICC analysis with these results:
 - 95% Confidence Interval: [${ctx.ciLow}, ${ctx.ciHigh}]
 - Number of cases rated: ${ctx.n}
 - Number of raters: ${ctx.k}
-- Rating scale: 1–4 (scores ≥ 3 are passing, scores < 3 are rejected)
+- Rating scale: 1–4 (passing cut point: scores ≥ ${ctx.cutPoint ?? 3} are passing, scores < ${ctx.cutPoint ?? 3} are rejected)
 
 Use this context when answering questions about their results.`;
   }
