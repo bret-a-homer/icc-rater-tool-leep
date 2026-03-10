@@ -347,8 +347,12 @@ function PerRaterBreakdown({ matrix, headers, cutPoint = 3 }) {
       }}>
         Per-Rater Analysis
       </div>
-      <div style={{ fontSize: "0.7rem", color: "#555", marginBottom: "1.25rem" }}>
-        Pass/fail threshold: score ≥ {cutPoint}. True label = case mean across all raters. n = {n} cases.
+      <div style={{ fontSize: "0.72rem", color: "#555", lineHeight: 1.6, marginBottom: "1.25rem" }}>
+        Each rater is compared against the group consensus (mean score across all raters) using a pass/fail threshold of {cutPoint}.
+        The <strong style={{ color: "#ccc" }}>confusion matrix</strong> shows how often this rater agreed or disagreed with the group:
+        TP = correctly passed, TN = correctly failed, FN = falsely rejected a likely-pass candidate, FP = falsely passed a likely-fail candidate.
+        The <strong style={{ color: "#1e90ff" }}>blue curve</strong> shows the true (consensus) score distribution; the <strong style={{ color: "#e67e22" }}>orange curve</strong> shows this rater's distribution.
+        A large gap between the two curves suggests this rater scores systematically higher or lower than the group. n = {n} cases.
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
@@ -795,8 +799,14 @@ function NoiseVisualization({ icc, scaleMin = 1, scaleMax = 4 }) {
       marginBottom: "1rem",
     }}>
       <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#888",
-                    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.75rem" }}>
+                    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.4rem" }}>
         Expected Rating Distribution
+      </div>
+      <div style={{ fontSize: "0.72rem", color: "#555", lineHeight: 1.6, marginBottom: "0.85rem" }}>
+        Each curve shows the spread of scores a rater is likely to give to a candidate with a given true ability.
+        Wider, flatter curves mean more rating error — the same candidate could receive very different scores from different raters.
+        Use the slider to set the true ability level, then compare your ICC (solid curve) against the reference levels.
+        The colored dashed curves show how much narrower the spread would be at higher agreement levels.
       </div>
 
       {/* Slider */}
@@ -1768,24 +1778,6 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                 >
                   New Analysis
                 </button>
-              </div>
-
-              <button
-                style={{
-                  ...s.btnPrimary, marginTop: 0, width: "100%",
-                  background: reportLoading ? "#2a2d3e" : "#1a472a",
-                  color: reportLoading ? "#666" : "#2ecc71",
-                  boxShadow: "none",
-                  border: "1px solid #2ecc71",
-                  display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
-                }}
-                onClick={generateReport}
-                disabled={reportLoading}
-              >
-                {reportLoading ? "⏳ Generating report…" : "⬇ Download Report (.docx)"}
-              </button>
-              <div style={{ fontSize: "0.7rem", color: "#444", textAlign: "center", marginTop: "0.4rem" }}>
-                Downloads a Word doc — open directly or import into Google Docs via File → Import
               </div>
 
               <MisclassificationPanel icc={result.icc} cutPoint={cutPoint} />
