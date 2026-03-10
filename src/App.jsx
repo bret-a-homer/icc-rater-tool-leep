@@ -75,6 +75,124 @@ function parseCSV(text) {
   return { matrix, headers: hasHeader ? lines[0].split(/[,\t]/).map(s => s.trim()) : null };
 }
 
+// ── Normal CDF (for misclassification math) ──────────────────────────────────
+function erf(x) {
+  const sign = x >= 0 ? 1 : -1;
+  x = Math.abs(x);
+  const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+  const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+  const t = 1 / (1 + p * x);
+  const y = 1 - (((((a5 * t + a4) * t) + a3) * t + a2) * t + a1) * t * Math.exp(-x * x);
+  return sign * y;
+}
+function normalCDF(x) {
+  return 0.5 * (1 + erf(x / Math.sqrt(2)));
+}
+
+// ── Simulated data generator ─────────────────────────────────────────────────
+function generateSimulatedData(targetICC, n = 40, k = 3) {
+  // errorSD derived from ICC = σ²_subjects / (σ²_subjects + σ²_error)
+  // for uniform true scores on [1,4]: σ²_subjects = (3²)/12 = 0.75
+  const errorSD = Math.sqrt(0.75 * (1 - targetICC) / targetICC);
+  const matrix = [];
+  for (let i = 0; i < n; i++) {
+    const trueScore = 1 + Math.random() * 3;
+    const row = [];
+    for (let j = 0; j < k; j++) {
+      // Box-Muller normal sample
+      const u1 = Math.max(1e-10, Math.random());
+      const noise = errorSD * Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * Math.random());
+      row.push(Math.min(4, Math.max(1, Math.round(trueScore + noise))));
+    }
+    matrix.push(row);
+  }
+  return matrix;
+}
+
+// ── Misclassification Panel ───────────────────────────────────────────────────
+function MisclassificationPanel({ icc }) {
+  const TOTAL = 1000;
+  const trueThrees = TOTAL * 0.25; // assume uniform distribution of true scores
+  const trueFours  = TOTAL * 0.25;
+
+  const scaleVariance = (3 * 3) / 12; // uniform on [1,4]
+  const errorSD = Math.sqrt((1 - Math.max(0, Math.min(0.9999, icc))) * scaleVariance);
+
+  // P(single rater scores ≤ 2 | true score = x) = Φ((2.5 - x) / errorSD)
+  const p3 = normalCDF((2.5 - 3) / errorSD);
+  const p4 = normalCDF((2.5 - 4) / errorSD);
+
+  const falseFrom3 = Math.round(trueThrees * p3);
+  const falseFrom4 = Math.round(trueFours  * p4);
+  const totalFalse = falseFrom3 + falseFrom4;
+  const pct = ((totalFalse / (trueThrees + trueFours)) * 100).toFixed(1);
+
+  const barW = Math.min(100, parseFloat(pct));
+  const barColor = parseFloat(pct) < 5 ? "#27ae60" : parseFloat(pct) < 15 ? "#f39c12" : "#e74c3c";
+
+  return (
+    <div style={{
+      background: "#141720",
+      borderRadius: "14px",
+      padding: "1.25rem 1.5rem",
+      border: "1px solid #2a2d3e",
+      marginBottom: "1rem",
+    }}>
+      <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#888",
+                    textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.85rem" }}>
+        False Rejection Estimator &nbsp;·&nbsp; 1,000 applicants assumed
+      </div>
+
+      {/* Big number */}
+      <div style={{ display: "flex", alignItems: "flex-end", gap: "0.75rem", marginBottom: "0.85rem" }}>
+        <div style={{ fontSize: "2.8rem", fontWeight: 700, lineHeight: 1,
+                      fontFamily: "'DM Mono', monospace", color: barColor }}>
+          {totalFalse}
+        </div>
+        <div style={{ fontSize: "0.85rem", color: "#888", paddingBottom: "0.4rem", lineHeight: 1.4 }}>
+          truly-qualified applicants<br />
+          <strong style={{ color: "#ccc" }}>incorrectly rejected</strong>
+        </div>
+      </div>
+
+      {/* Bar */}
+      <div style={{ height: "8px", borderRadius: "4px", background: "#2a2d3e",
+                    marginBottom: "0.5rem", overflow: "hidden" }}>
+        <div style={{ height: "100%", width: `${barW}%`, background: barColor,
+                      borderRadius: "4px", transition: "width 0.4s" }} />
+      </div>
+      <div style={{ fontSize: "0.72rem", color: "#555", marginBottom: "1rem" }}>
+        {pct}% of the 500 truly-qualified applicants (true score 3 or 4) are mislabeled as failing
+      </div>
+
+      {/* Breakdown table */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
+        {[
+          { label: "True score 3 → rated ≤ 2", count: falseFrom3, pct: (p3 * 100).toFixed(1),
+            note: "Borderline-pass rated as fail" },
+          { label: "True score 4 → rated ≤ 2", count: falseFrom4, pct: (p4 * 100).toFixed(1),
+            note: "Clear-pass rated as fail" },
+        ].map(({ label, count, pct: p, note }) => (
+          <div key={label} style={{ background: "#1a1d27", borderRadius: "8px",
+                                    padding: "0.75rem", border: "1px solid #2a2d3e" }}>
+            <div style={{ fontSize: "1.4rem", fontWeight: 700, color: barColor,
+                          fontFamily: "'DM Mono', monospace" }}>{count}</div>
+            <div style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem" }}>{note}</div>
+            <div style={{ fontSize: "0.65rem", color: "#555", marginTop: "0.15rem" }}>
+              {p}% chance per applicant
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: "0.85rem", fontSize: "0.7rem", color: "#444", lineHeight: 1.5 }}>
+        Assumes 1,000 total applicants with uniformly distributed true scores (250 each at 1–4).
+        Scores ≤ 2 are rejected. Error model: single-rater observation from ICC-implied measurement noise.
+      </div>
+    </div>
+  );
+}
+
 // ── Gauge / Scale component ──────────────────────────────────────────────────
 function ICCGauge({ icc, ciLow, ciHigh }) {
   // Layout: negative sliver = 8% of bar width, positive range = 92%
@@ -500,6 +618,16 @@ export default function App() {
     setResult(null); setError(""); setRawText(""); setFileName("");
   };
 
+  const loadSimulated = (targetICC, label) => {
+    const mat = generateSimulatedData(targetICC);
+    setMatrix(mat);
+    setHeaders(["Rater1", "Rater2", "Rater3"]);
+    setFileName(`${label} (simulated)`);
+    setRawText("");
+    setError("");
+    setStep("options");
+  };
+
   // ── Styles ────────────────────────────────────────────────────────────────
   const s = {
     app: {
@@ -733,6 +861,14 @@ export default function App() {
       const scaleVariance = (3 * 3) / 12;
       const errorSD = Math.sqrt((1 - Math.max(0, Math.min(0.9999, result.icc))) * scaleVariance);
 
+      // Misclassification stats (1,000 applicants, uniform true scores)
+      const p3 = normalCDF((2.5 - 3) / errorSD);
+      const p4 = normalCDF((2.5 - 4) / errorSD);
+      const falseFrom3 = Math.round(250 * p3);
+      const falseFrom4 = Math.round(250 * p4);
+      const totalFalse = falseFrom3 + falseFrom4;
+      const falsePct = ((totalFalse / 500) * 100).toFixed(1);
+
       const prompt = `You are writing a brief section of a professional inter-rater reliability report. 
 Write 2–3 concise paragraphs interpreting the following ICC results for a non-technical audience (e.g. a hiring manager).
 
@@ -745,8 +881,12 @@ Data:
 - Number of raters: ${result.k}
 - Rating scale: 1–4
 - Estimated error SD: ±${errorSD.toFixed(2)} score points
+- Assuming 1,000 applicants with uniformly distributed true scores, scores ≤ 2 are rejected:
+  - Estimated false rejections (truly score 3, rated ≤ 2): ${falseFrom3} applicants
+  - Estimated false rejections (truly score 4, rated ≤ 2): ${falseFrom4} applicants
+  - Total incorrectly rejected: ${totalFalse} of 500 truly-qualified applicants (${falsePct}%)
 
-Cover: what the ICC score means in plain language, what the practical implication is for using these ratings to make decisions, and one concrete recommendation. Be direct and specific. Do not use jargon. Do not use bullet points.`;
+Cover: what the ICC score means in plain language, what the practical implication is for using these ratings to make decisions, including specific mention of the false rejection numbers, and one concrete recommendation. Be direct and specific. Do not use jargon. Do not use bullet points.`;
 
       let narrative = "";
       try {
@@ -907,6 +1047,51 @@ Cover: what the ICC score means in plain language, what the practical implicatio
               ]
             }),
 
+            // Misclassification section
+            new Paragraph({ spacing: { before: 200, after: 0 }, children: [new TextRun("")] }),
+            new Paragraph({ heading: HeadingLevel.HEADING_1,
+              children: [new TextRun({ text: "False Rejection Estimate (1,000 Applicants)", font: "Arial" })] }),
+            new Paragraph({
+              spacing: { before: 0, after: 120 },
+              children: [new TextRun({
+                text: `Assuming 1,000 applicants with uniformly distributed true scores (250 per score point) and a pass threshold of score ≥ 3, the following estimates how many truly-qualified candidates would be incorrectly rejected by a single rater under this level of agreement.`,
+                size: 20, font: "Arial", color: "333333",
+              })]
+            }),
+            new Table({
+              width: { size: 9360, type: WidthType.DXA },
+              columnWidths: [3120, 3120, 3120],
+              rows: [
+                new TableRow({ children: [
+                  makeCell("Group",                    { fill: DARK, bold: true, color: "FFFFFF", width: 3120, center: true }),
+                  makeCell("False Rejections (of 250)", { fill: DARK, bold: true, color: "FFFFFF", width: 3120, center: true }),
+                  makeCell("Error Rate",               { fill: DARK, bold: true, color: "FFFFFF", width: 3120, center: true }),
+                ]}),
+                new TableRow({ children: [
+                  makeCell("True score 3 → rated ≤ 2", { fill: "FFF8EE", width: 3120 }),
+                  makeCell(String(falseFrom3),           { fill: "FFF8EE", width: 3120, center: true, bold: true, size: 22 }),
+                  makeCell(`${(p3 * 100).toFixed(1)}%`,  { fill: "FFF8EE", width: 3120, center: true }),
+                ]}),
+                new TableRow({ children: [
+                  makeCell("True score 4 → rated ≤ 2", { fill: "F5F5F5", width: 3120 }),
+                  makeCell(String(falseFrom4),           { fill: "F5F5F5", width: 3120, center: true, bold: true, size: 22 }),
+                  makeCell(`${(p4 * 100).toFixed(1)}%`,  { fill: "F5F5F5", width: 3120, center: true }),
+                ]}),
+                new TableRow({ children: [
+                  makeCell("Total incorrectly rejected", { fill: "EEF2F7", width: 3120, bold: true }),
+                  makeCell(`${totalFalse} of 500`,        { fill: "EEF2F7", width: 3120, center: true, bold: true, size: 24 }),
+                  makeCell(`${falsePct}%`,                { fill: "EEF2F7", width: 3120, center: true, bold: true }),
+                ]}),
+              ]
+            }),
+            new Paragraph({
+              spacing: { before: 80, after: 0 },
+              children: [new TextRun({
+                text: "Assumes scores ≤ 2 are rejected. Error model: single-rater observation with ICC-implied measurement noise (normal distribution). True score distribution assumed uniform across 1–4.",
+                size: 16, italics: true, color: "888888", font: "Arial",
+              })]
+            }),
+
             // Footer note
             new Paragraph({ spacing: { before: 400, after: 0 },
               border: { top: { style: BorderStyle.SINGLE, size: 4, color: ORANGE } },
@@ -1010,6 +1195,37 @@ Cover: what the ICC score means in plain language, what the practical implicatio
               </div>
 
               {error && <div style={s.errorBox}>⚠ {error}</div>}
+
+              {/* Sample data */}
+              <div style={{ marginTop: "1.75rem" }}>
+                <div style={s.label}>Or try with simulated data</div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.6rem" }}>
+                  {[
+                    { label: "High Agreement", icc: 0.90, color: "#27ae60", desc: "ICC ≈ 0.90" },
+                    { label: "Moderate",        icc: 0.70, color: "#f1c40f", desc: "ICC ≈ 0.70" },
+                    { label: "Low Agreement",   icc: 0.35, color: "#e74c3c", desc: "ICC ≈ 0.35" },
+                  ].map(({ label, icc, color, desc }) => (
+                    <button
+                      key={label}
+                      onClick={() => loadSimulated(icc, label)}
+                      style={{
+                        background: `${color}12`,
+                        border: `1.5px solid ${color}55`,
+                        borderRadius: "10px",
+                        padding: "0.75rem 0.5rem",
+                        cursor: "pointer",
+                        color,
+                        fontFamily: "'DM Sans', sans-serif",
+                        textAlign: "center",
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: "0.8rem" }}>{label}</div>
+                      <div style={{ fontSize: "0.7rem", opacity: 0.75, marginTop: "0.2rem" }}>{desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </>
           )}
 
@@ -1123,6 +1339,8 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                 scaleMin={1}
                 scaleMax={4}
               />
+
+              <MisclassificationPanel icc={result.icc} />
 
               <div style={{
                 background: "#141720",
