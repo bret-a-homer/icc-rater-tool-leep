@@ -556,44 +556,22 @@ function ChatWidget({ iccContext }) {
 
 // ── Gauge / Scale component ──────────────────────────────────────────────────
 function ICCGauge({ icc, ciLow, ciHigh }) {
-  // Layout: negative sliver = 8% of bar width, positive range = 92%
-  const NEG_PCT = 8;
-  const POS_PCT = 100 - NEG_PCT;
-
-  // Positive zones in ICC space (0..1) with their share of the positive bar
-  const posZones = [
-    { from: 0.000, to: 0.500, label: "Poor",               color: "#95a5a6" },
-    { from: 0.500, to: 0.600, label: "Borderline",         color: "#e74c3c" },
-    { from: 0.600, to: 0.750, label: "Moderate",           color: "#f1c40f" },
-    { from: 0.750, to: 0.900, label: "Good",               color: "#27ae60" },
-    { from: 0.900, to: 0.975, label: "Excellent",          color: "#1e90ff" },
-    { from: 0.975, to: 1.000, label: "Suspiciously Ideal", color: "#95a5a6" },
-  ];
-
-  // Map an ICC value to bar % position
-  const toBarPct = (v) => {
-    const clamped = Math.max(-1, Math.min(1, v));
-    if (clamped < 0) {
-      // Negative: compress entire -1..0 range into NEG_PCT sliver
-      return ((clamped + 1) / 1) * NEG_PCT;
-    } else {
-      // Positive: map 0..1 into NEG_PCT..100
-      return NEG_PCT + clamped * POS_PCT;
-    }
-  };
-
+  // Bar spans 0..1 only
   const allZones = [
-    { from: -1, to: 0, label: "Neg.", color: "#95a5a6", widthPct: NEG_PCT },
-    ...posZones.map(z => ({
-      ...z,
-      widthPct: (z.to - z.from) * POS_PCT,
-    })),
+    { from: 0.000, to: 0.500, label: "Poor",               color: "#e74c3c", widthPct: 50    },
+    { from: 0.500, to: 0.600, label: "Borderline",         color: "#f39c12", widthPct: 10    },
+    { from: 0.600, to: 0.750, label: "Moderate",           color: "#f1c40f", widthPct: 15    },
+    { from: 0.750, to: 0.900, label: "Good",               color: "#27ae60", widthPct: 15    },
+    { from: 0.900, to: 0.975, label: "Excellent",          color: "#1e90ff", widthPct: 7.5   },
+    { from: 0.975, to: 1.000, label: "Suspiciously Ideal", color: "#95a5a6", widthPct: 2.5   },
   ];
+
+  // Map an ICC value (0..1) to bar %
+  const toBarPct = (v) => Math.max(0, Math.min(100, v * 100));
 
   const getZone = (v) => {
-    if (v < 0) return allZones[0];
-    for (const z of posZones) if (v >= z.from && v < z.to) return z;
-    return posZones[posZones.length - 1];
+    for (const z of allZones) if (v >= z.from && v < z.to) return z;
+    return allZones[allZones.length - 1];
   };
 
   const zone = getZone(icc);
@@ -601,15 +579,15 @@ function ICCGauge({ icc, ciLow, ciHigh }) {
   const ciLowPct  = toBarPct(Math.max(-1, ciLow));
   const ciHighPct = toBarPct(Math.min(1,  ciHigh));
 
-  // Axis tick marks: positions in bar % and their labels
+  // Axis tick marks
   const ticks = [
-    { pct: NEG_PCT,                          label: "0.0" },
-    { pct: NEG_PCT + 0.50 * POS_PCT,         label: "0.50" },
-    { pct: NEG_PCT + 0.60 * POS_PCT,         label: "0.60" },
-    { pct: NEG_PCT + 0.75 * POS_PCT,         label: "0.75" },
-    { pct: NEG_PCT + 0.90 * POS_PCT,         label: "0.90" },
-    { pct: NEG_PCT + 0.975 * POS_PCT,        label: "0.975" },
-    { pct: 100,                               label: "1.0" },
+    { pct: 0,    label: "0.0"   },
+    { pct: 50,   label: "0.50"  },
+    { pct: 60,   label: "0.60"  },
+    { pct: 75,   label: "0.75"  },
+    { pct: 90,   label: "0.90"  },
+    { pct: 97.5, label: "0.975" },
+    { pct: 100,  label: "1.0"   },
   ];
 
   return (
@@ -734,13 +712,12 @@ function NoiseVisualization({ icc, scaleMin = 1, scaleMax = 4 }) {
     { key: "excellent",   label: "Excellent",   icc: 0.925, color: "#1e90ff", dash: "6,3" },
     { key: "good",        label: "Good",        icc: 0.825, color: "#27ae60", dash: "4,4" },
     { key: "moderate",    label: "Moderate",    icc: 0.675, color: "#f1c40f", dash: "4,4" },
-    { key: "borderline",  label: "Borderline",  icc: 0.550, color: "#e74c3c", dash: "2,3" },
+    { key: "borderline",  label: "Borderline",  icc: 0.550, color: "#f39c12", dash: "2,3" },
   ];
 
   const getActualColor = (v) => {
-    if (v < 0) return "#95a5a6";
-    if (v < 0.50) return "#95a5a6";
-    if (v < 0.60) return "#e74c3c";
+    if (v < 0.50) return "#e74c3c";
+    if (v < 0.60) return "#f39c12";
     if (v < 0.75) return "#f1c40f";
     if (v < 0.90) return "#27ae60";
     if (v < 0.975) return "#1e90ff";
@@ -1746,8 +1723,8 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                   ["0.90 – 0.975", "Excellent",          "#1e90ff", "Excellent agreement. Strong confidence in rater consistency."],
                   ["0.75 – 0.90",  "Good",               "#27ae60", "Good reliability. Suitable for most selection contexts."],
                   ["0.60 – 0.75",  "Moderate",           "#f1c40f", "Acceptable for exploratory use. Not recommended for high-stakes decisions alone."],
-                  ["0.50 – 0.60",  "Borderline",         "#e74c3c", "Marginal agreement. Proceed with caution; review outlier raters."],
-                  ["0.00 – 0.50",  "Poor",               "#95a5a6", "Rater agreement is insufficient. Consider rater training or rubric revision."],
+                  ["0.50 – 0.60",  "Borderline",         "#f39c12", "Marginal agreement. Proceed with caution; review outlier raters."],
+                  ["0.00 – 0.50",  "Poor",               "#e74c3c", "Rater agreement is insufficient. Consider rater training or rubric revision."],
                 ].map(([range, label, color, desc]) => (
                   <div key={range} style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start",
                                             marginBottom: "0.5rem", fontSize: "0.78rem" }}>
