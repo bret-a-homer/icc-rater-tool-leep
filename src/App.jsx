@@ -239,50 +239,81 @@ function PerRaterBreakdown({ matrix, headers }) {
     return { name, tp, fp, tn, fn, precision, recall, raterDist, trueDist };
   });
 
-  // Mini bar chart for distributions
-  const DistChart = ({ raterDist, trueDist }) => {
-    const maxCount = Math.max(1, ...raterDist, ...trueDist);
-    const scores = [1, 2, 3, 4];
+  // Smooth overlapping curve chart for distributions
+  const DistCurve = ({ raterDist, trueDist }) => {
+    const W = 180, H = 80;
+    const PAD = { l: 10, r: 10, t: 10, b: 20 };
+    const cW = W - PAD.l - PAD.r;
+    const cH = H - PAD.t - PAD.b;
+
+    const total = raterDist.reduce((a, b) => a + b, 0) || 1;
+    const rP = raterDist.map(c => c / total);
+    const tP = trueDist.map(c => c / total);
+    const maxP = Math.max(0.01, ...rP, ...tP);
+
+    // Map score (1–4) to x, proportion to y
+    const xOf = s => PAD.l + ((s - 1) / 3) * cW;
+    const yOf = p => PAD.t + cH - (p / maxP) * cH;
+    const baseY = PAD.t + cH;
+
+    // Catmull-Rom → cubic Bezier smooth path through 4 points
+    const smoothPath = props => {
+      const pts = [1, 2, 3, 4].map((s, i) => [xOf(s), yOf(props[i])]);
+      let d = `M ${pts[0][0]},${pts[0][1]}`;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p0 = pts[Math.max(0, i - 1)];
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+        const p3 = pts[Math.min(pts.length - 1, i + 2)];
+        const cp1x = p1[0] + (p2[0] - p0[0]) / 6;
+        const cp1y = p1[1] + (p2[1] - p0[1]) / 6;
+        const cp2x = p2[0] - (p3[0] - p1[0]) / 6;
+        const cp2y = p2[1] - (p3[1] - p1[1]) / 6;
+        d += ` C ${cp1x},${cp1y} ${cp2x},${cp2y} ${p2[0]},${p2[1]}`;
+      }
+      return d;
+    };
+    const filledPath = props =>
+      `${smoothPath(props)} L ${xOf(4)},${baseY} L ${xOf(1)},${baseY} Z`;
+
+    const threshX = xOf(2.5);
+
     return (
-      <div style={{ marginTop: "0.85rem" }}>
-        <div style={{ display: "flex", gap: "0.3rem", alignItems: "flex-end", height: "60px" }}>
-          {scores.map((s, i) => {
-            const rH = (raterDist[i] / maxCount) * 56;
-            const tH = (trueDist[i] / maxCount) * 56;
-            return (
-              <div key={s} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "2px" }}>
-                <div style={{ width: "100%", display: "flex", alignItems: "flex-end", gap: "2px", height: "56px" }}>
-                  {/* True dist bar */}
-                  <div style={{
-                    flex: 1, height: `${tH}px`, borderRadius: "3px 3px 0 0",
-                    background: "#3a7bd5", opacity: 0.5,
-                  }} />
-                  {/* Rater dist bar */}
-                  <div style={{
-                    flex: 1, height: `${rH}px`, borderRadius: "3px 3px 0 0",
-                    background: "#e67e22",
-                  }} />
-                </div>
-                <div style={{
-                  fontSize: "0.6rem", color: s >= 3 ? "#27ae60" : "#e74c3c",
-                  fontWeight: 700, fontFamily: "'DM Mono', monospace",
-                  borderTop: `2px solid ${s >= 3 ? "#27ae60" : "#e74c3c"}`,
-                  width: "100%", textAlign: "center", paddingTop: "2px",
-                }}>{s}</div>
-              </div>
-            );
-          })}
-        </div>
+      <div>
+        <svg width={W} height={H} style={{ display: "block", overflow: "visible" }}>
+          {/* Pass/fail threshold */}
+          <line x1={threshX} y1={PAD.t - 4} x2={threshX} y2={baseY}
+                stroke="#3a3f55" strokeWidth="1.5" strokeDasharray="3,2" />
+          <text x={threshX + 3} y={PAD.t + 1} fontSize="6" fill="#444" dominantBaseline="hanging">cut</text>
+
+          {/* True distribution — blue */}
+          <path d={filledPath(tP)} fill="rgba(58,123,213,0.18)" />
+          <path d={smoothPath(tP)} fill="none" stroke="rgba(58,123,213,0.75)" strokeWidth="1.5" strokeLinejoin="round" />
+
+          {/* Rater distribution — orange */}
+          <path d={filledPath(rP)} fill="rgba(230,126,34,0.18)" />
+          <path d={smoothPath(rP)} fill="none" stroke="rgba(230,126,34,0.9)" strokeWidth="1.5" strokeLinejoin="round" />
+
+          {/* X-axis score labels */}
+          {[1, 2, 3, 4].map(s => (
+            <text key={s} x={xOf(s)} y={H - 5} textAnchor="middle"
+                  fontSize="7.5" fill={s >= 3 ? "#27ae60" : "#c0392b"}
+                  fontWeight="700" fontFamily="'DM Mono', monospace">{s}</text>
+          ))}
+        </svg>
         {/* Legend */}
-        <div style={{ display: "flex", gap: "0.8rem", marginTop: "0.4rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: "#3a7bd5", opacity: 0.5 }} />
-            <span style={{ fontSize: "0.6rem", color: "#555" }}>True (mean)</span>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
-            <div style={{ width: "8px", height: "8px", borderRadius: "2px", background: "#e67e22" }} />
-            <span style={{ fontSize: "0.6rem", color: "#555" }}>This rater</span>
-          </div>
+        <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.25rem" }}>
+          {[
+            { color: "rgba(58,123,213,0.75)",  label: "True (mean)" },
+            { color: "rgba(230,126,34,0.9)",   label: "This rater"  },
+          ].map(({ color, label }) => (
+            <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+              <svg width="16" height="8">
+                <line x1="0" y1="4" x2="16" y2="4" stroke={color} strokeWidth="1.5" />
+              </svg>
+              <span style={{ fontSize: "0.58rem", color: "#555" }}>{label}</span>
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -378,7 +409,7 @@ function PerRaterBreakdown({ matrix, headers }) {
                 <div style={{ fontSize: "0.65rem", color: "#555", marginBottom: "0.25rem" }}>
                   Score distribution
                 </div>
-                <DistChart raterDist={raterDist} trueDist={trueDist} />
+                <DistCurve raterDist={raterDist} trueDist={trueDist} />
               </div>
             </div>
           </div>
