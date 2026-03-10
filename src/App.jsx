@@ -278,7 +278,7 @@ function PerRaterBreakdown({ matrix, headers, cutPoint = 3 }) {
     const filledPath = props =>
       `${smoothPath(props)} L ${xOf(4)},${baseY} L ${xOf(1)},${baseY} Z`;
 
-    const threshX = xOf(cut - 0.5);
+    const threshX = xOf(cut);
 
     return (
       <div>
