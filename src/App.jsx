@@ -1338,12 +1338,6 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                 />
               </div>
 
-              <NoiseVisualization
-                icc={result.icc}
-                scaleMin={1}
-                scaleMax={4}
-              />
-
               <div style={{
                 background: "#141720",
                 borderRadius: "10px",
@@ -1372,6 +1366,12 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                   </div>
                 ))}
               </div>
+
+              <NoiseVisualization
+                icc={result.icc}
+                scaleMin={1}
+                scaleMax={4}
+              />
 
               <div style={{ display: "flex", gap: "0.75rem", marginBottom: "0.75rem" }}>
                 <button
