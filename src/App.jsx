@@ -586,7 +586,6 @@ function ICCGauge({ icc, ciLow, ciHigh }) {
     { pct: 60,   label: "0.60"  },
     { pct: 75,   label: "0.75"  },
     { pct: 90,   label: "0.90"  },
-    { pct: 97.5, label: "0.975" },
     { pct: 100,  label: "1.0"   },
   ];
 
@@ -665,8 +664,8 @@ function ICCGauge({ icc, ciLow, ciHigh }) {
             textAlign: "center",
             fontWeight: 600,
             lineHeight: 1.2,
-            overflow: "hidden",
-            whiteSpace: i === 0 ? "nowrap" : "normal",
+            whiteSpace: "nowrap",
+            overflow: "visible",
           }}>
             {z.label === "Suspiciously Ideal" ? "" : z.label}
           </div>
