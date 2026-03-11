@@ -288,9 +288,9 @@ function PerRaterBreakdown({ matrix, headers, cutPoint = 3 }) {
                 stroke="#3a3f55" strokeWidth="1.5" strokeDasharray="3,2" />
           <text x={threshX + 3} y={PAD.t + 1} fontSize="6" fill="#444" dominantBaseline="hanging">cut</text>
 
-          {/* True distribution — blue */}
-          <path d={filledPath(tP)} fill="rgba(58,123,213,0.18)" />
-          <path d={smoothPath(tP)} fill="none" stroke="rgba(58,123,213,0.75)" strokeWidth="1.5" strokeLinejoin="round" />
+          {/* Consensus distribution — gray */}
+          <path d={filledPath(tP)} fill="rgba(136,136,136,0.18)" />
+          <path d={smoothPath(tP)} fill="none" stroke="rgba(136,136,136,0.75)" strokeWidth="1.5" strokeLinejoin="round" />
 
           {/* Rater distribution — orange */}
           <path d={filledPath(rP)} fill="rgba(230,126,34,0.18)" />
@@ -299,14 +299,14 @@ function PerRaterBreakdown({ matrix, headers, cutPoint = 3 }) {
           {/* X-axis score labels */}
           {[1, 2, 3, 4].map(s => (
             <text key={s} x={xOf(s)} y={H - 5} textAnchor="middle"
-                  fontSize="7.5" fill={s >= cut ? "#27ae60" : "#c0392b"}
+                  fontSize="7.5" fill="#888"
                   fontWeight="700" fontFamily="'DM Mono', monospace">{s}</text>
           ))}
         </svg>
         {/* Legend */}
         <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.25rem" }}>
           {[
-            { color: "rgba(58,123,213,0.75)",  label: "True (mean)" },
+            { color: "rgba(136,136,136,0.75)", label: "Consensus (mean)" },
             { color: "rgba(230,126,34,0.9)",   label: "This rater"  },
           ].map(({ color, label }) => (
             <div key={label} style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
@@ -351,7 +351,7 @@ function PerRaterBreakdown({ matrix, headers, cutPoint = 3 }) {
         Each rater is compared against the group consensus (mean score across all raters) using a pass/fail threshold of {cutPoint}.
         The <strong style={{ color: "#ccc" }}>confusion matrix</strong> shows how often this rater agreed or disagreed with the group:
         TP = correctly passed, TN = correctly failed, FN = falsely rejected a likely-pass candidate, FP = falsely passed a likely-fail candidate.
-        The <strong style={{ color: "#1e90ff" }}>blue curve</strong> shows the true (consensus) score distribution; the <strong style={{ color: "#e67e22" }}>orange curve</strong> shows this rater's distribution.
+        The <strong style={{ color: "#aaa" }}>gray curve</strong> shows the consensus score distribution (the average score across all raters); the <strong style={{ color: "#e67e22" }}>orange curve</strong> shows this rater's distribution.
         A large gap between the two curves suggests this rater scores systematically higher or lower than the group. n = {n} cases.
       </div>
 
@@ -381,7 +381,7 @@ function PerRaterBreakdown({ matrix, headers, cutPoint = 3 }) {
                 {/* Row: True Pass */}
                 <div style={{ display: "grid", gridTemplateColumns: "56px 1fr 1fr", gap: "4px", marginBottom: "4px" }}>
                   <div style={{ fontSize: "0.6rem", color: "#555", display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: "4px" }}>
-                    True: Pass
+                    Consensus: Pass
                   </div>
                   <Cell count={tp} label="TP" sub="Correct pass" bg="#1e3a2f" textColor="#2ecc71" />
                   <Cell count={fn} label="FN" sub="False reject" bg="#3a1e1e" textColor="#e74c3c" />
@@ -389,10 +389,10 @@ function PerRaterBreakdown({ matrix, headers, cutPoint = 3 }) {
                 {/* Row: True Fail */}
                 <div style={{ display: "grid", gridTemplateColumns: "56px 1fr 1fr", gap: "4px" }}>
                   <div style={{ fontSize: "0.6rem", color: "#555", display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: "4px" }}>
-                    True: Fail
+                    Consensus: Fail
                   </div>
                   <Cell count={fp} label="FP" sub="False pass" bg="#3a2a1e" textColor="#f39c12" />
-                  <Cell count={tn} label="TN" sub="Correct fail" bg="#1e1e2a" textColor="#7f8c8d" />
+                  <Cell count={tn} label="TN" sub="Correct fail" bg="#1e3a2f" textColor="#2ecc71" />
                 </div>
                 {/* Precision / Recall */}
                 <div style={{ display: "flex", gap: "0.75rem", marginTop: "0.6rem" }}>
@@ -697,7 +697,7 @@ function ICCGauge({ icc, ciLow, ciHigh }) {
 function NoiseVisualization({ icc, scaleMin = 1, scaleMax = 4 }) {
   const [trueScore, setTrueScore] = useState(2.5);
   // Which comparison curves are toggled on
-  const [shown, setShown] = useState({ actual: true, borderline: true, moderate: true, good: true, excellent: true });
+  const [shown, setShown] = useState({ actual: true, borderline: false, moderate: true, good: false, excellent: false });
 
   const scaleRange = scaleMax - scaleMin;
   const scaleVariance = (scaleRange * scaleRange) / 12;
@@ -934,6 +934,7 @@ export default function App() {
       setRawText(text);
       setFileName(name || "data");
       setStep("options");
+      window.scrollTo(0, 0);
     } catch (e) {
       setError(e.message);
     }
@@ -956,6 +957,7 @@ export default function App() {
     const res = calculateICC(matrix, agreementType);
     setResult(res);
     setStep("result");
+    window.scrollTo(0, 0);
   };
 
   const reset = () => {
@@ -972,6 +974,7 @@ export default function App() {
     setError("");
     setCutPoint(3);
     setStep("options");
+    window.scrollTo(0, 0);
   };
 
   // ── Styles ────────────────────────────────────────────────────────────────
