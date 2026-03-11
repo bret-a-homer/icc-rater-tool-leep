@@ -1,5 +1,60 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 
+// ── Statistical helpers for exact CI computation ─────────────────────────────
+
+// Log-gamma (Lanczos approximation)
+function lgamma(z) {
+  const p = [0.99999999999980993, 676.5203681218851, -1259.1392167224028,
+    771.32342877765313, -176.61502916214059, 12.507343278686905,
+    -0.13857109526572012, 9.9843695780195716e-6, 1.5056327351493116e-7];
+  if (z < 0.5) return Math.log(Math.PI / Math.sin(Math.PI * z)) - lgamma(1 - z);
+  z -= 1;
+  let x = p[0];
+  for (let i = 1; i < 9; i++) x += p[i] / (z + i);
+  const t = z + 7.5;
+  return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+}
+
+// Regularized incomplete beta I_x(a,b) via Lentz continued fractions
+function betaInc(x, a, b) {
+  if (x <= 0) return 0;
+  if (x >= 1) return 1;
+  if (x > (a + 1) / (a + b + 2)) return 1 - betaInc(1 - x, b, a);
+  const lbeta = lgamma(a) + lgamma(b) - lgamma(a + b);
+  const front = Math.exp(a * Math.log(x) + b * Math.log(1 - x) - lbeta) / a;
+  let c = 1, d = 1 - (a + b) * x / (a + 1);
+  if (Math.abs(d) < 1e-30) d = 1e-30;
+  d = 1 / d;
+  let h = d;
+  for (let m = 1; m <= 200; m++) {
+    const m2 = 2 * m;
+    let aa = m * (b - m) * x / ((a + m2 - 1) * (a + m2));
+    d = 1 + aa * d; if (Math.abs(d) < 1e-30) d = 1e-30;
+    c = 1 + aa / c; if (Math.abs(c) < 1e-30) c = 1e-30;
+    d = 1 / d; h *= d * c;
+    aa = -(a + m) * (a + b + m) * x / ((a + m2) * (a + m2 + 1));
+    d = 1 + aa * d; if (Math.abs(d) < 1e-30) d = 1e-30;
+    c = 1 + aa / c; if (Math.abs(c) < 1e-30) c = 1e-30;
+    d = 1 / d; h *= d * c;
+    if (Math.abs(d * c - 1) < 3e-12) break;
+  }
+  return front * h;
+}
+
+// F-distribution quantile via bisection on the beta CDF
+function fQuantile(p, d1, d2) {
+  if (p <= 0) return 0;
+  if (p >= 1) return Infinity;
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 120; i++) {
+    const x = (lo + hi) / 2;
+    if (betaInc(x, d1 / 2, d2 / 2) < p) lo = x; else hi = x;
+    if (hi - lo < 1e-13) break;
+  }
+  const x = (lo + hi) / 2;
+  return (d2 * x) / (d1 * (1 - x));
+}
+
 // ── ICC calculation (pure JS, no external deps) ─────────────────────────────
 function calculateICC(matrix, type) {
   // matrix: array of rows, each row is array of ratings
@@ -55,12 +110,26 @@ function calculateICC(matrix, type) {
     icc = (MSR - MSE) / (MSR + (k - 1) * MSE);
   }
 
-  // 95% CI via F-distribution approximation
-  const F = MSR / MSE;
-  const FL = F / 3.84; // rough 95% lower (F_crit ≈ 3.84 for large df)
-  const FU = F * 3.84;
-  const ciLow = Math.max(-1, (FL - 1) / (FL + k - 1));
-  const ciHigh = Math.min(1, (FU - 1) / (FU + k - 1));
+  // 95% CI — exact F critical values (McGraw & Wong 1996)
+  const F    = MSR / MSE;
+  const F_U  = fQuantile(0.975, dfR, dfE); // F(0.975; n-1, (n-1)(k-1))
+  const F_L  = fQuantile(0.025, dfR, dfE); // F(0.025; n-1, (n-1)(k-1))
+
+  let ciLow, ciHigh;
+  if (type === "absolute") {
+    // Absolute agreement CI (McGraw & Wong 1996)
+    // Replace MSR with MSR/F_crit to get lower/upper ICC bounds,
+    // keeping MSC fixed — accounts for MSC in the denominator
+    const dc = k * MSC + MSE * (k * n - k - n);
+    ciLow  = Math.max(-1, (n * (MSR - F_U * MSE)) / (n * MSR + F_U * dc));
+    ciHigh = Math.min(1,  (n * (MSR - F_L * MSE)) / (n * MSR + F_L * dc));
+  } else {
+    // Consistency CI (McGraw & Wong 1996)
+    const FL = F / F_U;
+    const FU = F / F_L;
+    ciLow  = Math.max(-1, (FL - 1) / (FL + k - 1));
+    ciHigh = Math.min(1,  (FU - 1) / (FU + k - 1));
+  }
 
   return { icc: Math.max(-1, Math.min(1, icc)), ciLow, ciHigh, n, k };
 }
