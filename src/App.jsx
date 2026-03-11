@@ -188,7 +188,8 @@ function MisclassificationPanel({ icc, cutPoint = 3 }) {
   const trueAbove  = TOTAL * bandSize; // e.g. true score = cutPoint + 1
 
   const scaleVariance = (3 * 3) / 12; // uniform on [1,4]
-  const errorSD = Math.sqrt((1 - Math.max(0, Math.min(0.9999, icc))) * scaleVariance);
+  const c = Math.max(0.001, Math.min(0.9999, icc));
+  const errorSD = Math.sqrt(scaleVariance * (1 - c) / c); // classical test theory: σ²_e = σ²_true × (1-ICC)/ICC
 
   // Continuous threshold at (cutPoint - 0.5): P(rated < cutPoint | true = x)
   const thresh = cutPoint - 0.5;
