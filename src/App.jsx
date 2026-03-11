@@ -90,7 +90,7 @@ function normalCDF(x) {
 }
 
 // ── Simulated data generator ─────────────────────────────────────────────────
-function generateSimulatedData(targetICC, n = 40, k = 3) {
+function generateSimulatedData(targetICC, n = 100, k = 3) {
   // errorSD derived from ICC = σ²_subjects / (σ²_subjects + σ²_error)
   // for uniform true scores on [1,4]: σ²_subjects = (3²)/12 = 0.75
   const errorSD = Math.sqrt(0.75 * (1 - targetICC) / targetICC);
