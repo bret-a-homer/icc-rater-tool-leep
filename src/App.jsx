@@ -179,29 +179,57 @@ function generateSimulatedData(targetICC, n = 100, k = 3) {
 }
 
 // ── Misclassification Panel ───────────────────────────────────────────────────
-function MisclassificationPanel({ icc, cutPoint = 3 }) {
+function MisclassificationPanel({ icc, cutPoint = 3, matrix }) {
   const TOTAL = 100;
-  // Uniform on [1,4]: count cases in each "true" band around cutPoint
-  // Band just above cut: [cutPoint, cutPoint+1); band well above: [cutPoint+1, 4]
-  const bandSize = 0.25; // each integer band = 25% of uniform [1,4]
-  const trueAtCut  = TOTAL * bandSize; // e.g. true score = cutPoint
-  const trueAbove  = TOTAL * bandSize; // e.g. true score = cutPoint + 1
 
-  const scaleVariance = (3 * 3) / 12; // uniform on [1,4]
+  // Consensus scores = row means of the uploaded matrix
+  const consensusScores = matrix
+    ? matrix.map(row => row.reduce((a, b) => a + b, 0) / row.length)
+    : null;
+
+  // Use actual variance of consensus scores for errorSD; fall back to uniform [1,4]
+  let scaleVariance = (3 * 3) / 12;
+  if (consensusScores && consensusScores.length > 1) {
+    const mean = consensusScores.reduce((a, b) => a + b, 0) / consensusScores.length;
+    scaleVariance = consensusScores.reduce((s, v) => s + (v - mean) ** 2, 0) / consensusScores.length;
+  }
+
   const c = Math.max(0.001, Math.min(0.9999, icc));
-  const errorSD = Math.sqrt(scaleVariance * (1 - c) / c); // classical test theory: σ²_e = σ²_true × (1-ICC)/ICC
-
-  // Continuous threshold at (cutPoint - 0.5): P(rated < cutPoint | true = x)
+  const errorSD = Math.sqrt(Math.max(0.001, scaleVariance) * (1 - c) / c);
   const thresh = cutPoint - 0.5;
-  const pAtCut  = normalCDF((thresh - cutPoint) / errorSD);
-  const pAbove  = normalCDF((thresh - (cutPoint + 1)) / errorSD);
 
-  const falseFromCut  = Math.round(trueAtCut  * pAtCut);
-  const falseFromAbove = Math.round(trueAbove * pAbove);
-  const totalFalse = falseFromCut + falseFromAbove;
-  const qualifiedCount = trueAtCut + trueAbove;
-  const pct = ((totalFalse / qualifiedCount) * 100).toFixed(1);
+  // Build per-band breakdown from actual consensus score distribution
+  const bands = [];
+  let qualifiedCount = 0;
+  let totalFalse = 0;
 
+  if (consensusScores && consensusScores.length > 0) {
+    const n = consensusScores.length;
+    const scoreCounts = {};
+    for (const s of consensusScores) {
+      const r = Math.min(4, Math.max(1, Math.round(s)));
+      scoreCounts[r] = (scoreCounts[r] || 0) + 1;
+    }
+    for (let score = cutPoint; score <= 4; score++) {
+      const count = scoreCounts[score] || 0;
+      if (count === 0) continue;
+      const scaledCount = (count / n) * TOTAL;
+      const p = normalCDF((thresh - score) / errorSD);
+      qualifiedCount += scaledCount;
+      totalFalse += scaledCount * p;
+      bands.push({ score, scaledCount, p, falseRej: scaledCount * p });
+    }
+  } else {
+    for (let score = cutPoint; score <= 4; score++) {
+      const scaledCount = TOTAL * 0.25;
+      const p = normalCDF((thresh - score) / errorSD);
+      qualifiedCount += scaledCount;
+      totalFalse += scaledCount * p;
+      bands.push({ score, scaledCount, p, falseRej: scaledCount * p });
+    }
+  }
+
+  const pct = qualifiedCount > 0 ? ((totalFalse / qualifiedCount) * 100).toFixed(1) : "0.0";
   const barW = Math.min(100, parseFloat(pct));
   const barColor = parseFloat(pct) < 5 ? "#27ae60" : parseFloat(pct) < 15 ? "#f39c12" : "#e74c3c";
 
@@ -222,7 +250,7 @@ function MisclassificationPanel({ icc, cutPoint = 3 }) {
       <div style={{ display: "flex", alignItems: "flex-end", gap: "0.75rem", marginBottom: "0.85rem" }}>
         <div style={{ fontSize: "2.8rem", fontWeight: 700, lineHeight: 1,
                       fontFamily: "'DM Mono', monospace", color: barColor }}>
-          {totalFalse}
+          {Math.round(totalFalse)}
         </div>
         <div style={{ fontSize: "0.85rem", color: "#888", paddingBottom: "0.4rem", lineHeight: 1.4 }}>
           truly-qualified applicants (true score ≥ {cutPoint})<br />
@@ -237,22 +265,21 @@ function MisclassificationPanel({ icc, cutPoint = 3 }) {
                       borderRadius: "4px", transition: "width 0.4s" }} />
       </div>
       <div style={{ fontSize: "0.72rem", color: "#555", marginBottom: "1rem" }}>
-        {pct}% of the {Math.round(qualifiedCount)} truly-qualified applicants (true score ≥ {cutPoint}) are rated &lt; {cutPoint} and rejected
+        {pct}% of the ~{Math.round(qualifiedCount)} truly-qualified applicants (consensus score ≥ {cutPoint}) are rated &lt; {cutPoint} and rejected
       </div>
 
-      {/* Breakdown table */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.6rem" }}>
-        {[
-          { label: `True score ${cutPoint}, rated < ${cutPoint}`, count: falseFromCut,  pct: (pAtCut  * 100).toFixed(1), note: "Borderline-pass rated as fail" },
-          { label: `True score ${cutPoint + 1}, rated < ${cutPoint}`, count: falseFromAbove, pct: (pAbove * 100).toFixed(1), note: "Clear-pass rated as fail" },
-        ].map(({ label, count, pct: p, note }) => (
-          <div key={label} style={{ background: "#1a1d27", borderRadius: "8px",
+      {/* Breakdown table — one cell per qualifying score band */}
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${bands.length}, 1fr)`, gap: "0.6rem" }}>
+        {bands.map(({ score, falseRej, p }) => (
+          <div key={score} style={{ background: "#1a1d27", borderRadius: "8px",
                                     padding: "0.75rem", border: "1px solid #2a2d3e" }}>
             <div style={{ fontSize: "1.4rem", fontWeight: 700, color: barColor,
-                          fontFamily: "'DM Mono', monospace" }}>{count}</div>
-            <div style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem" }}>{note}</div>
+                          fontFamily: "'DM Mono', monospace" }}>{Math.round(falseRej)}</div>
+            <div style={{ fontSize: "0.7rem", color: "#888", marginTop: "0.2rem" }}>
+              Consensus score {score}
+            </div>
             <div style={{ fontSize: "0.65rem", color: "#555", marginTop: "0.15rem" }}>
-              {p}% chance per applicant
+              {(p * 100).toFixed(1)}% chance per applicant
             </div>
           </div>
         ))}
@@ -264,6 +291,7 @@ function MisclassificationPanel({ icc, cutPoint = 3 }) {
         <div>1. Each case is rated by 1 rater</div>
         <div>2. Cases rated {cutPoint} or higher are passing</div>
         <div>3. Cases rated below {cutPoint} are rejected</div>
+        <div>4. Score distribution reflects uploaded consensus ratings</div>
       </div>
     </div>
   );
@@ -1830,7 +1858,7 @@ Cover: what the ICC score means in plain language, what the practical implicatio
                 </button>
               </div>
 
-              <MisclassificationPanel icc={result.icc} cutPoint={cutPoint} />
+              <MisclassificationPanel icc={result.icc} cutPoint={cutPoint} matrix={matrix} />
               <PerRaterBreakdown matrix={matrix} headers={headers} cutPoint={cutPoint} />
             </>
           )}
