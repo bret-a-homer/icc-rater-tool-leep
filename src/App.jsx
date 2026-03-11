@@ -180,7 +180,7 @@ function generateSimulatedData(targetICC, n = 100, k = 3) {
 
 // ── Misclassification Panel ───────────────────────────────────────────────────
 function MisclassificationPanel({ icc, cutPoint = 3 }) {
-  const TOTAL = 1000;
+  const TOTAL = 100;
   // Uniform on [1,4]: count cases in each "true" band around cutPoint
   // Band just above cut: [cutPoint, cutPoint+1); band well above: [cutPoint+1, 4]
   const bandSize = 0.25; // each integer band = 25% of uniform [1,4]
@@ -214,7 +214,7 @@ function MisclassificationPanel({ icc, cutPoint = 3 }) {
     }}>
       <div style={{ fontSize: "0.75rem", fontWeight: 700, color: "#888",
                     textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "0.85rem" }}>
-        False Rejection Estimator &nbsp;·&nbsp; 1,000 applicants assumed
+        False Rejection Estimator &nbsp;·&nbsp; 100 applicants assumed
       </div>
 
       {/* Big number */}
