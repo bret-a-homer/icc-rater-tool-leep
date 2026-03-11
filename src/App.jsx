@@ -275,32 +275,33 @@ function PerRaterBreakdown({ matrix, headers, cutPoint = 3 }) {
   const k = matrix[0].length;
   const n = matrix.length;
 
-  // Estimated true score per case = mean across all raters
-  const rowMeans = matrix.map(row => row.reduce((a, b) => a + b, 0) / row.length);
-
-  // "True" pass/fail: mean >= cutPoint → pass
-  const truePass = i => rowMeans[i] >= cutPoint;
-
   const raters = Array.from({ length: k }, (_, j) => {
     const name = headers?.[j] || `Rater ${j + 1}`;
+
+    // Leave-one-out consensus: mean of all raters except rater j
+    const loMeans = matrix.map(row => {
+      const others = row.filter((_, col) => col !== j);
+      return others.reduce((a, b) => a + b, 0) / others.length;
+    });
+    const consensusPass = i => loMeans[i] >= cutPoint;
 
     // Confusion matrix counts
     let tp = 0, fp = 0, tn = 0, fn = 0;
     // Distribution counts for scores 1–4
     const raterDist  = [0, 0, 0, 0]; // index = score-1
-    const trueDist   = [0, 0, 0, 0]; // rounded mean
+    const trueDist   = [0, 0, 0, 0]; // rounded leave-one-out mean
 
     matrix.forEach((row, i) => {
       const score = row[j];
       const raterPass = score >= cutPoint;
-      const tp_ = truePass(i);
-      if (tp_ && raterPass)  tp++;
-      if (!tp_ && raterPass) fp++;
-      if (!tp_ && !raterPass) tn++;
-      if (tp_ && !raterPass) fn++;
+      const cp_ = consensusPass(i);
+      if (cp_ && raterPass)  tp++;
+      if (!cp_ && raterPass) fp++;
+      if (!cp_ && !raterPass) tn++;
+      if (cp_ && !raterPass) fn++;
 
       raterDist[Math.round(score) - 1] = (raterDist[Math.round(score) - 1] || 0) + 1;
-      const roundedMean = Math.min(4, Math.max(1, Math.round(rowMeans[i])));
+      const roundedMean = Math.min(4, Math.max(1, Math.round(loMeans[i])));
       trueDist[roundedMean - 1]++;
     });
 
